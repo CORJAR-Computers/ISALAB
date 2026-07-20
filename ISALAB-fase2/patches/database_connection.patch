@@ -1,0 +1,74 @@
+diff --git a/database/connection.py b/database/connection.py
+index 3fe3f32..b1f7bc7 100644
+--- a/database/connection.py
++++ b/database/connection.py
+@@ -34,6 +34,14 @@ class DatabaseManager:
+             return
+ 
+         self._local = threading.local()
++        # Fix Fase 2 (issue HIGH): registry de todas las conexiones abiertas
++        # por cualquier thread, para que close_all_connections() pueda cerrarlas
++        # todas (no solo la del thread actual). Antes, las conexiones de
++        # threads secundarios (workers de PDF, querys async, etc.) quedaban
++        # abiertas indefinidamente, causando "database is locked" en
++        # siguientes accesos.
++        self._all_connections: list = []
++        self._connections_lock = threading.Lock()
+         self._initialize_database()
+         self._initialized = True
+         logger.info("DatabaseManager inicializado")
+@@ -123,8 +131,13 @@ class DatabaseManager:
+         """Context manager para conexiones"""
+         try:
+             if not hasattr(self._local, 'connection'):
+-                self._local.connection = sqlite3.connect(**DB_CONFIG)
+-                self._local.connection.row_factory = sqlite3.Row
++                conn = sqlite3.connect(**DB_CONFIG)
++                conn.row_factory = sqlite3.Row
++                self._local.connection = conn
++                # Fix Fase 2: registrar la conexión para poder cerrarla
++                # desde cualquier thread al apagar la app.
++                with self._connections_lock:
++                    self._all_connections.append(conn)
+ 
+             yield self._local.connection
+ 
+@@ -229,10 +242,34 @@ class DatabaseManager:
+             }
+ 
+     def close_all_connections(self):
+-        """Cierra todas las conexiones abiertas (útil al cerrar la app)."""
+-        if hasattr(self._local, 'connection') and self._local.connection:
+-            self._local.connection.close()
+-            logger.info("Conexiones de base de datos cerradas")
++        """
++        Cierra TODAS las conexiones abiertas por cualquier thread.
++
++        Fix Fase 2 (issue HIGH): antes este método solo cerraba la conexión
++        del thread actual (``self._local.connection``), dejando abiertas
++        las conexiones de threads secundarios (workers de PDF, queries
++        async, etc.). Eso causaba ``database is locked`` en siguientes
++        accesos y/o fugas de file descriptors al cerrar la app.
++
++        Ahora recorre ``_all_connections`` (registry thread-safe) y las
++        cierra todas, sin importar de qué thread provinieron.
++        """
++        with self._connections_lock:
++            cerradas = 0
++            for conn in self._all_connections:
++                try:
++                    conn.close()
++                    cerradas += 1
++                except Exception as e:
++                    logger.warning(f"No se pudo cerrar una conexión: {e}")
++            self._all_connections.clear()
++
++            # Limpiar también la referencia thread-local del thread actual
++            if hasattr(self._local, 'connection'):
++                self._local.connection = None
++
++            if cerradas > 0:
++                logger.info(f"{cerradas} conexiones de base de datos cerradas")
+ 
+ 
+ # =======================================================================

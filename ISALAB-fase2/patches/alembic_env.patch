@@ -1,0 +1,50 @@
+diff --git a/alembic/env.py b/alembic/env.py
+index 9809e15..0036ce1 100644
+--- a/alembic/env.py
++++ b/alembic/env.py
+@@ -30,6 +30,26 @@ from orm_models.clinica import * # Importamos los modelos clínicos
+ # Y cambia el target_metadata
+ target_metadata = Base.metadata
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# Inyectar la URL de la DB desde config.py (issue M8 / Fase 2 DB-03).
++#
++# Antes, ``alembic.ini`` tenía ``sqlalchemy.url = sqlite:///isalab.db``
++# hardcoded, lo que hacía que ``alembic upgrade head`` creara ``./isalab.db``
++# en el CWD en vez de usar ``data/isalab.db`` (la DB real de la aplicación).
++#
++# Ahora ``alembic.ini`` tiene ``sqlalchemy.url =`` vacío, y lo inyectamos aquí
++# desde ``config.DB_PATH``. Para override manual, se puede usar la variable
++# de entorno ``ISALAB_DB_PATH``.
++# ─────────────────────────────────────────────────────────────────────────────
++try:
++    from config import DB_PATH
++    _db_url = f"sqlite:///{DB_PATH}"
++    config.set_main_option("sqlalchemy.url", _db_url)
++except ImportError:
++    # Si config.py no está disponible (ej. tests aislados), dejar que el
++    # valor de alembic.ini (vacío) se use. Alembic lanzará error claro.
++    pass
++
+ # other values from the config, defined by the needs of env.py,
+ # can be acquired:
+ # my_important_option = config.get_main_option("my_important_option")
+@@ -54,6 +74,7 @@ def run_migrations_offline() -> None:
+         target_metadata=target_metadata,
+         literal_binds=True,
+         dialect_opts={"paramstyle": "named"},
++        render_as_batch=True,  # SQLite no soporta ALTER completos; batch mode sí
+     )
+ 
+     with context.begin_transaction():
+@@ -75,7 +96,9 @@ def run_migrations_online() -> None:
+ 
+     with connectable.connect() as connection:
+         context.configure(
+-            connection=connection, target_metadata=target_metadata
++            connection=connection,
++            target_metadata=target_metadata,
++            render_as_batch=True,  # SQLite: permite alter_column vía recreación
+         )
+ 
+         with context.begin_transaction():

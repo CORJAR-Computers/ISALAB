@@ -1,0 +1,135 @@
+diff --git a/alembic/versions/agregar_created_at_usuarios.py b/alembic/versions/agregar_created_at_usuarios.py
+index 8b33305..e86f944 100644
+--- a/alembic/versions/agregar_created_at_usuarios.py
++++ b/alembic/versions/agregar_created_at_usuarios.py
+@@ -4,6 +4,18 @@ Revision ID: agregar_created_at_usuarios
+ Revises: 5688c877a6a6
+ Create Date: 2026-04-18 18:00:00
+ 
++NOTA (Fase 2, issue C3):
++    Esta migración originalmente creaba la tabla ``usuarios`` con la columna
++    ``password`` (sin ``_hash``), lo cual es inconsistente con:
++      - ``database/connection.py`` que crea la tabla con ``password_hash``
++      - ``services/usuario_service.py`` que hace SELECT/UPDATE sobre
++        ``password_hash``
++
++    Resultado: si Alembic creaba la tabla antes que ``DatabaseManager``, el
++    login fallaba con ``OperationalError: no such column: password_hash``.
++
++    Corregido para usar ``password_hash`` (igual que connection.py).
++    La migración es idempotente (verifica existencia de tabla y columnas).
+ """
+ from typing import Sequence, Union
+ 
+@@ -11,46 +23,87 @@ from alembic import op
+ import sqlalchemy as sa
+ 
+ 
++# revision identifiers, used by Alembic.
+ revision: str = 'agregar_created_at_usuarios'
+ down_revision: Union[str, Sequence[str], None] = '38d0897cfe7e'
+ branch_labels: Union[str, Sequence[str], None] = None
+ depends_on: Union[str, Sequence[str], None] = None
+ 
+ 
++def _table_exists(bind, table_name: str) -> bool:
++    result = bind.execute(sa.text(
++        "SELECT name FROM sqlite_master WHERE type='table' AND name=:t"
++    ), {"t": table_name})
++    return result.fetchone() is not None
++
++
++def _columns(bind, table_name: str) -> set:
++    result = bind.execute(sa.text(f"PRAGMA table_info({table_name})"))
++    return {row[1] for row in result.fetchall()}
++
++
+ def upgrade() -> None:
+-    """Agregar columna created_at a tabla usuarios si no existe."""
+-    # Verificar si la tabla existe
+-    conn = op.get_bind()
+-    result = conn.execute(sa.text(
+-        "SELECT name FROM sqlite_master WHERE type='table' AND name='usuarios'"
+-    ))
+-    if not result.fetchone():
+-        # La tabla no existe, crearla
++    """Crear tabla usuarios (si no existe) con password_hash, o agregar created_at."""
++    bind = op.get_bind()
++
++    if not _table_exists(bind, 'usuarios'):
++        # Crear tabla con el esquema correcto (password_hash, no password).
++        # Debe ser idéntico al de database/connection.py para evitar drift.
+         op.create_table('usuarios',
+             sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+             sa.Column('username', sa.String(length=50), nullable=False),
+-            sa.Column('password', sa.String(length=255), nullable=False),
++            sa.Column('password_hash', sa.String(length=255), nullable=False),
+             sa.Column('nombre', sa.String(length=100), nullable=False),
+             sa.Column('rol', sa.String(length=20), nullable=True),
+             sa.Column('activo', sa.Integer(), nullable=True),
+             sa.Column('ultimo_acceso', sa.String(length=50), nullable=True),
+             sa.Column('created_at', sa.String(length=50), nullable=True),
+-            sa.PrimaryKeyConstraint('id')
++            sa.PrimaryKeyConstraint('id'),
++            sa.UniqueConstraint('username'),
++        )
++        # CHECK constraint para rol (compatible con SQLite)
++        op.execute(
++            "CREATE TRIGGER IF NOT EXISTS trg_usuarios_rol_check "
++            "BEFORE INSERT ON usuarios "
++            "BEGIN "
++            "  SELECT CASE WHEN NEW.rol IS NOT NULL "
++            "    AND NEW.rol NOT IN ('admin','veterinario','asistente','usuario') "
++            "  THEN RAISE(ABORT, 'rol invalido') END; "
++            "END"
+         )
+     else:
+-        # La tabla existe, agregar columna si no existe
+-        result = conn.execute(sa.text(
+-            "PRAGMA table_info(usuarios)"
+-        ))
+-        columns = [row[1] for row in result.fetchall()]
+-        
+-        if 'created_at' not in columns:
+-            op.add_column('usuarios', sa.Column('created_at', sa.String(length=50), nullable=True))
+-        
+-        if 'ultimo_acceso' not in columns:
+-            op.add_column('usuarios', sa.Column('ultimo_acceso', sa.String(length=50), nullable=True))
++        # La tabla existe: agregar columnas faltantes
++        cols = _columns(bind, 'usuarios')
++
++        # Migración de password -> password_hash (si aplica)
++        if 'password' in cols and 'password_hash' not in cols:
++            op.alter_column('usuarios', 'password',
++                            new_column_name='password_hash',
++                            existing_type=sa.String(length=255),
++                            existing_nullable=False)
++            cols = _columns(bind, 'usuarios')  # refrescar
++
++        if 'password_hash' not in cols:
++            # Tabla sin columna de password (¿cómo llegó?) — crearla vacía
++            op.add_column('usuarios',
++                          sa.Column('password_hash', sa.String(length=255),
++                                    nullable=False, server_default=''))
++
++        if 'created_at' not in cols:
++            op.add_column('usuarios',
++                          sa.Column('created_at', sa.String(length=50),
++                                    nullable=True))
++
++        if 'ultimo_acceso' not in cols:
++            op.add_column('usuarios',
++                          sa.Column('ultimo_acceso', sa.String(length=50),
++                                    nullable=True))
+ 
+ 
+ def downgrade() -> None:
+-    """Eliminar columna created_at."""
+-    op.drop_column('usuarios', 'created_at')
+\ No newline at end of file
++    """Eliminar columna created_at (no elimina la tabla completa)."""
++    bind = op.get_bind()
++    if _table_exists(bind, 'usuarios'):
++        cols = _columns(bind, 'usuarios')
++        if 'created_at' in cols:
++            op.drop_column('usuarios', 'created_at')
