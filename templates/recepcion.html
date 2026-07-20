@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Comprobante de Recepción - {{rec.codigo}}{% endblock %}
+
+{% block content %}
+    <h2>Comprobante de Recepción</h2>
+
+    <table class="tabla-limpia evitar-corte">
+        <tr>
+            <th>Paciente</th>
+            <th>Especie</th>
+            <th>Propietario</th>
+        </tr>
+        <tr>
+            <td><strong>{{rec.animal_nombre}}</strong></td>
+            <td>{{rec.especie}}</td>
+            <td>{{rec.propietario}}</td>
+        </tr>
+    </table>
+
+    <table class="tabla-limpia evitar-corte">
+        <tr>
+            <th>Código de Ingreso</th>
+            <th>Fecha y Hora</th>
+            <th>Veterinario Asignado</th>
+            <th>Estado</th>
+        </tr>
+        <tr>
+            <td><strong>{{rec.codigo}}</strong></td>
+            <td>{{rec.fecha_hora}}</td>
+            <td>{{rec.veterinario}}</td>
+            <td>{{rec.estado}}</td>
+        </tr>
+    </table>
+
+    <h3>Motivo de Ingreso</h3>
+    <p>{{rec.motivo}}</p>
+
+    {% if rec.observaciones %}
+    <h3>Observaciones</h3>
+    <p>{{rec.observaciones}}</p>
+    {% endif %}
+
+    <div class="firma-container evitar-corte">
+        <div class="firma-linea">
+            <div class="firma-nombre">{{rec.veterinario}}</div>
+            <div class="firma-rol">Médico Veterinario</div>
+        </div>
+    </div>
+{% endblock %}

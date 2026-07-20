@@ -1,0 +1,166 @@
+{% extends "base_report.html" %}
+
+{% block title %}Fórmula Médica - {{formula.animal_nombre}}{% endblock %}
+
+{% block header_extra %}
+<style>
+    .formula-header {
+        text-align: center;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: linear-gradient(135deg, {{colores.primario_claro}} 0%, {{colores.primario}} 100%);
+        border-radius: 8px;
+        color: white;
+    }
+    .formula-header h1 {
+        margin: 0;
+        font-size: 20pt;
+        font-weight: bold;
+    }
+    .formula-header p {
+        margin: 5px 0 0 0;
+        font-size: 10pt;
+        opacity: 0.9;
+    }
+    .patient-info {
+        background-color: {{colores.fondo_alternado}};
+        border-left: 4px solid {{colores.acento}};
+        padding: 12px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+    }
+    .patient-info table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .patient-info td {
+        padding: 6px;
+        font-size: 10pt;
+    }
+    .patient-info td:first-child {
+        font-weight: bold;
+        color: {{colores.primario}};
+        width: 30%;
+    }
+    .diagnostico-box {
+        background-color: #FEF3C7;
+        border-left: 4px solid {{colores.advertencia}};
+        padding: 12px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+    }
+    .diagnostico-box h3 {
+        margin: 0 0 8px 0;
+        color: {{colores.advertencia}};
+        font-size: 12pt;
+    }
+    .medicamentos-box {
+        background-color: {{colores.primario_claro}};
+        border-left: 4px solid {{colores.primario}};
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+    }
+    .medicamentos-box h3 {
+        margin: 0 0 10px 0;
+        color: {{colores.primario}};
+        font-size: 12pt;
+    }
+    .medicamentos-box pre {
+        font-family: Arial, sans-serif;
+        font-size: 10pt;
+        white-space: pre-wrap;
+        margin: 0;
+        line-height: 1.6;
+    }
+    .indicaciones-box {
+        background-color: #F0FDF4;
+        border-left: 4px solid {{colores.secundario}};
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+    }
+    .indicaciones-box h3 {
+        margin: 0 0 10px 0;
+        color: {{colores.secundario}};
+        font-size: 12pt;
+    }
+    .indicaciones-box pre {
+        font-family: Arial, sans-serif;
+        font-size: 10pt;
+        white-space: pre-wrap;
+        margin: 0;
+        line-height: 1.6;
+    }
+    .nota-aclaratoria {
+        margin-top: 30px;
+        padding: 10px;
+        background-color: #F8FAFC;
+        border: 1px dashed {{colores.borde}};
+        border-radius: 4px;
+        font-size: 8pt;
+        color: {{colores.texto_secundario}};
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="formula-header">
+    <h1>℞ FÓRMULA MÉDICA VETERINARIA</h1>
+    <p>{{lab.nombre}} - {{lab.direccion}}</p>
+</div>
+
+<div class="patient-info">
+    <table>
+        <tr>
+            <td>Fecha:</td>
+            <td>{{fecha}}</td>
+        </tr>
+        <tr>
+            <td>Paciente:</td>
+            <td><strong>{{formula.animal_nombre}}</strong></td>
+        </tr>
+        <tr>
+            <td>Especie:</td>
+            <td>{{formula.especie}}</td>
+        </tr>
+        <tr>
+            <td>Propietario:</td>
+            <td>{{formula.propietario}}</td>
+        </tr>
+    </table>
+</div>
+
+{% if formula.diagnostico %}
+<div class="diagnostico-box">
+    <h3>📋 Diagnóstico</h3>
+    <p style="margin: 0; font-size: 10pt;">{{formula.diagnostico}}</p>
+</div>
+{% endif %}
+
+<div class="medicamentos-box">
+    <h3>💊 Medicamentos y Dosis</h3>
+    <pre>{{formula.medicamentos}}</pre>
+</div>
+
+{% if formula.indicaciones %}
+<div class="indicaciones-box">
+    <h3>⚕️ Indicaciones y Recomendaciones</h3>
+    <pre>{{formula.indicaciones}}</pre>
+</div>
+{% endif %}
+
+<div class="nota-aclaratoria">
+    <strong>IMPORTANTE:</strong> Esta fórmula médica es de uso exclusivo veterinario y debe ser cumplida según las indicaciones prescritas.
+    No automedique a su mascota sin consultar al médico veterinario.
+</div>
+
+<div class="firmas-container" style="margin-top: 40px;">
+    <div class="firma-linea" style="width: 8.5cm; border-top: 1px solid {{colores.primario}}; margin: 0 auto; padding-top: 5px;">
+        <div class="firma-nombre" style="font-weight: bold; font-size: 11pt;">{{veterinario_nombre}}</div>
+        <div class="firma-rol" style="font-size: 9pt; color: {{colores.texto_secundario}};">Médico Veterinario</div>
+        <div class="firma-mp" style="font-size: 8pt; color: {{colores.texto_secundario}};">Firma y Sello</div>
+    </div>
+</div>
+{% endblock %}

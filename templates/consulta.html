@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Consulta Ambulatoria - {{consulta.animal_nombre}}{% endblock %}
+
+{% block content %}
+    <h2>Consulta Ambulatoria</h2>
+
+    <table class="tabla-limpia evitar-corte" style="table-layout: fixed; width: 100%; margin-bottom: 5px;">
+        <tr>
+            <th style="width: 25%;">Paciente</th>
+            <th style="width: 25%;">Código</th>
+            <th style="width: 25%;">Especie</th>
+            <th style="width: 25%;">Nº Consulta</th>
+        </tr>
+        <tr>
+            <td><strong>{{consulta.animal_nombre}}</strong></td>
+            <td>{{consulta.animal_codigo}}</td>
+            <td>{{consulta.especie}}</td>
+            <td><strong>{{consulta.codigo}}</strong></td>
+        </tr>
+    </table>
+
+    <table class="tabla-limpia evitar-corte" style="table-layout: fixed; width: 100%;">
+        <tr>
+            <th style="width: 20%;">Fecha</th>
+            <th style="width: 45%;">Veterinario</th>
+            <th style="width: 35%;">Motivo</th>
+        </tr>
+        <tr>
+            <td>{{consulta.fecha}}</td>
+            <td>{{consulta.veterinario}}</td>
+            <td>{{consulta.motivo}}</td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 25px;">
+        {% if consulta.evolucion %}
+        <div class="evitar-corte" style="margin-bottom: 15px;">
+            <h3>Evolución</h3>
+            <p style="margin-top: 5px;">{{consulta.evolucion}}</p>
+        </div>
+        {% endif %}
+
+        {% if consulta.examen_fisico %}
+        <div class="evitar-corte" style="margin-bottom: 15px;">
+            <h3>Examen Físico</h3>
+            <p style="margin-top: 5px;">{{consulta.examen_fisico}}</p>
+        </div>
+        {% endif %}
+
+        {% if consulta.tratamiento %}
+        <div class="evitar-corte" style="margin-bottom: 15px;">
+            <h3>Tratamiento</h3>
+            <p style="margin-top: 5px;">{{consulta.tratamiento}}</p>
+        </div>
+        {% endif %}
+
+        {% if consulta.medicamentos %}
+        <div class="evitar-corte" style="background-color: #f8fafc; border-left: 4px solid #3BADE5; padding: 15px; margin-top: 25px; margin-bottom: 15px;">
+            <h3 style="margin-top: 0; color: #1E3A5F;">Medicamentos Recetados</h3>
+            <p style="margin-bottom: 0;">{{consulta.medicamentos | replace('\n', '<br>') | safe}}</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="firma-container evitar-corte" style="margin-top: 2.5cm;">
+        <div class="firma-linea" style="width: 8.5cm; border-top: 1px solid #1e293b; margin: 0 auto; padding-top: 5px;">
+            <div class="firma-nombre" style="font-weight: bold; font-size: 11pt;">{{consulta.veterinario}}</div>
+            <div class="firma-rol" style="font-size: 9pt; color: #64748b;">Médico Veterinario</div>
+        </div>
+    </div>
+{% endblock %}

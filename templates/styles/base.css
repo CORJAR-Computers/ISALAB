@@ -1,0 +1,1302 @@
+/* templates/styles/base.css - IsaLab Normalizado con correcciones */
+
+/* ==================== VARIABLES CSS ==================== */
+:root {
+
+    /* Colores - Healthcare Professional WCAG */
+    --color-primario: {{colores.primario}};
+
+    --color-primario-oscuro: {{colores.primario_oscuro}};
+
+    --color-primario-claro: {{colores.primario_claro}};
+
+    --color-secundario: {{colores.secundario}};
+
+    --color-acento: {{colores.acento}};
+
+    --color-fondo: {{colores.fondo}};
+
+    --color-fondo-alternado: {{colores.fondo_alternado}};
+
+    --color-borde: {{colores.borde}};
+
+    --color-borde-claro: {{colores.borde_claro}};
+
+    --color-texto: {{colores.texto_principal}};
+
+    --color-texto-secundario: {{colores.texto_secundario}};
+
+    --color-texto-claro: {{colores.texto_claro}};
+    --color-peligro: #B91C1C;
+    --color-advertencia: #B45309;
+    --color-exito: #15803D;
+    --color-info: #0E7490;
+
+    /* Tipografía */
+    --font-base: {{tipografia.tamano_base}}pt;
+
+    --font-familia: {{tipografia.familia_principal}};
+
+    --font-mono: {{tipografia.familia_monospace}};
+
+    /* Espaciado */
+    --espacio-xs: 2pt;
+    --espacio-sm: 4pt;
+    --espacio-md: 8pt;
+    --espacio-lg: 15pt;
+    --espacio-xl: 25pt;
+}
+
+/* ==================== RESET Y BASE ==================== */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: var(--font-base);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+}
+
+body {
+    font-family: var(--font-familia);
+    color: var(--color-texto);
+    background-color: var(--color-fondo);
+    line-height: 1.4;
+    position: relative;
+    overflow: visible;
+}
+
+/* ==================== HEADER RUNNING (se repite en cada página) ==================== */
+.header-running {
+    position: running(header-running);
+    width: 100%;
+    margin-bottom: 5mm;
+    background-color: white;
+}
+
+/* Contenedor de logos (izquierda y derecha) */
+.encabezado-logos {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    padding: 4px 0;
+    border-bottom: 1.5pt solid var(--color-primario);
+}
+
+.logo-izquierdo {
+    flex: 0 0 auto;
+    text-align: left;
+}
+
+.logo-derecho {
+    flex: 0 0 auto;
+    text-align: right;
+}
+
+.logo-img {
+    max-height: 28mm;
+    width: auto;
+    max-width: 75mm;
+    object-fit: contain;
+    display: block;
+}
+
+.logo-img-empresa {
+    max-height: 28mm;
+    width: auto;
+    max-width: 75mm;
+    object-fit: contain;
+    display: block;
+}
+
+/* ==================== MARCAS DE AGUA ==================== */
+.marca-agua {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    font-size: 70pt;
+    font-weight: bold;
+    color: var(--color-primario);
+
+    opacity: {{config.marca_agua_opacidad}};
+    z-index: 1000;
+    pointer-events: none;
+    white-space: nowrap;
+    letter-spacing: 5pt;
+}
+
+.marca-borrador {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    font-size: 60pt;
+    font-weight: bold;
+    color: var(--color-acento);
+    opacity: 0.15;
+    z-index: 1001;
+    pointer-events: none;
+    border: 5pt solid var(--color-acento);
+    padding: 15pt 40pt;
+    letter-spacing: 10pt;
+}
+
+.marca-copia {
+    position: fixed;
+    top: 15mm;
+    right: 15mm;
+    font-size: 14pt;
+    font-weight: bold;
+    color: var(--color-acento);
+    opacity: 0.3;
+    z-index: 1001;
+    border: 2pt solid var(--color-acento);
+    padding: 3pt 12pt;
+    transform: rotate(5deg);
+}
+
+/* ==================== CONTENIDO PRINCIPAL ==================== */
+.reporte-contenido {
+    min-height: 250mm;
+}
+
+/* ==================== ENCABEZADO (solo si se usa sin running header, no se usa aquí) ==================== */
+.encabezado {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 8pt;
+    border-bottom: 2pt solid var(--color-primario);
+    margin-bottom: 10pt;
+}
+
+.encabezado-logo {
+    flex-shrink: 0;
+}
+
+.encabezado-logo img {
+    width: {{lab.logo_ancho}}mm;
+
+    height: {{lab.logo_alto}}mm;
+    object-fit: contain;
+}
+
+.encabezado-info {
+    text-align: center;
+    flex: 1;
+    padding: 0 10pt;
+}
+
+.encabezado-info .lab-nombre {
+    font-size: {{tipografia.tamano_titulo}}pt;
+    font-weight: bold;
+    color: var(--color-primario-oscuro);
+    letter-spacing: 2pt;
+    text-transform: uppercase;
+}
+
+.encabezado-info .lab-nombre-comercial {
+    font-size: {{tipografia.tamano_subtitulo}}pt;
+    color: var(--color-primario);
+    margin-top: 1pt;
+}
+
+.encabezado-info .lab-slogan {
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    color: var(--color-texto-secundario);
+    font-style: italic;
+    margin-top: 2pt;
+}
+
+.encabezado-datos {
+    text-align: right;
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    color: var(--color-texto-secundario);
+    line-height: 1.3;
+}
+
+.encabezado-datos .dato-item {
+    white-space: nowrap;
+}
+
+/* ==================== TÍTULO DEL REPORTE ==================== */
+.reporte-titulo {
+    text-align: center;
+    margin-bottom: 4pt;
+    padding: 3pt 0;
+    border-bottom: 1pt solid var(--color-borde-claro);
+}
+
+.reporte-titulo h1 {
+    font-size: 10pt;
+    color: var(--color-primario-oscuro);
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+}
+
+.reporte-titulo .subtitulo {
+    font-size: 8pt;
+    color: var(--color-texto-secundario);
+    margin-top: 1pt;
+}
+
+/* ==================== SECCIONES ==================== */
+.seccion {
+    margin-bottom: 10pt;
+}
+
+.seccion-titulo {
+    font-size: {{tipografia.tamano_subtitulo}}pt;
+    font-weight: bold;
+    color: var(--color-primario-oscuro);
+    text-transform: uppercase;
+    padding: 4pt 8pt;
+    background-color: var(--color-primario-claro);
+    border-left: 3pt solid var(--color-primario);
+    margin-bottom: 6pt;
+    letter-spacing: 0.5pt;
+}
+
+.seccion-contenido {
+    padding: 0 4pt;
+}
+
+/* ==================== GRID DE INFORMACIÓN ==================== */
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3pt 15pt;
+
+    font-size: {{tipografia.tamano_base}}pt;
+}
+
+.info-grid-3col {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+.info-grid-4col {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
+.info-item {
+    display: flex;
+    padding: 2pt 0;
+    border-bottom: 0.5pt dotted var(--color-borde-claro);
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    font-weight: 600;
+    color: var(--color-texto-secundario);
+    min-width: 90pt;
+    flex-shrink: 0;
+}
+
+.info-label::after {
+    content: ":";
+    margin-right: 4pt;
+}
+
+.info-valor {
+    color: var(--color-texto);
+    font-weight: 500;
+}
+
+.info-valor.destacado {
+    color: var(--color-primario-oscuro);
+    font-weight: 700;
+}
+
+/* ==================== TABLAS ==================== */
+.tabla {
+    width: 100%;
+    border-collapse: collapse;
+
+    font-size: {{tipografia.tamano_base}}pt;
+    margin-bottom: 8pt;
+}
+
+.tabla thead th {
+    background-color: var(--color-primario);
+    color: white;
+    font-weight: 600;
+    text-align: left;
+    padding: 5pt 6pt;
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3pt;
+    border: 0.5pt solid var(--color-primario-oscuro);
+}
+
+.tabla thead th.centro {
+    text-align: center;
+}
+
+.tabla thead th.derecha {
+    text-align: right;
+}
+
+.tabla tbody td {
+    padding: 4pt 6pt;
+    border-bottom: 0.5pt solid var(--color-borde-claro);
+    vertical-align: top;
+}
+
+.tabla tbody tr:nth-child(even) {
+    background-color: var(--color-fondo-alternado);
+}
+
+.tabla tbody tr:hover {
+    background-color: var(--color-primario-claro);
+}
+
+.tabla td.centrado {
+    text-align: center;
+}
+
+.tabla td.derecha {
+    text-align: right;
+}
+
+.tabla td.monospace {
+    font-family: {{tipografia.familia_monospace}};
+}
+
+.tabla-interna {
+    width: 100%;
+    border-collapse: collapse;
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    margin: 2pt 0;
+}
+
+.tabla-interna td {
+    padding: 2pt 4pt;
+    border-bottom: 0.5pt dotted var(--color-borde-claro);
+}
+
+.tabla-interna tr:last-child td {
+    border-bottom: none;
+}
+
+/* ==================== INDICADORES DE VALORES ==================== */
+.valor-normal {
+    color: #2e7d32;
+    font-weight: 600;
+}
+
+.valor-bajo {
+    color: #1565c0;
+    font-weight: 600;
+}
+
+.valor-alto {
+    color: #c62828;
+    font-weight: 600;
+}
+
+.valor-critico-bajo {
+    color: #0d47a1;
+    font-weight: 700;
+    background-color: #e3f2fd;
+    padding: 1pt 3pt;
+    border-radius: 2pt;
+}
+
+.valor-critico-alto {
+    color: #b71c1c;
+    font-weight: 700;
+    background-color: #ffebee;
+    padding: 1pt 3pt;
+    border-radius: 2pt;
+}
+
+.valor-sin-rango {
+    color: var(--color-texto-claro);
+}
+
+.indicador-normal {
+    color: #15803D;
+}
+
+.indicador-bajo {
+    color: #0891B2;
+}
+
+.indicador-alto {
+    color: #B91C1C;
+}
+
+.indicador-critico-bajo {
+    color: #0E7490;
+    background-color: #E0F2FE;
+    font-weight: 700;
+}
+
+.indicador-critico-alto {
+    color: #B91C1C;
+    background-color: #FEE2E2;
+    font-weight: 700;
+}
+
+/* ==================== CATEGORÍAS / GRUPOS ==================== */
+.categoria-separador td {
+    background-color: var(--color-secundario-claro);
+    font-weight: 700;
+    color: var(--color-secundario-oscuro);
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    padding: 4pt 6pt;
+    border-left: 3pt solid var(--color-secundario);
+}
+
+/* ==================== OBSERVACIONES ==================== */
+.observaciones {
+    margin-top: 8pt;
+    padding: 8pt;
+    background-color: var(--color-fondo-alternado);
+    border-left: 3pt solid var(--color-info);
+    border-radius: 0 3pt 3pt 0;
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+}
+
+.observaciones .obs-titulo {
+    font-weight: 700;
+    color: var(--color-info);
+    text-transform: uppercase;
+    margin-bottom: 4pt;
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+}
+
+.observaciones .obs-texto {
+    color: var(--color-texto-secundario);
+    line-height: 1.4;
+}
+
+/* ==================== ALERTAS Y NOTAS ==================== */
+.alerta {
+    padding: 6pt 10pt;
+    border-radius: 3pt;
+    margin-bottom: 6pt;
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+}
+
+.alerta-advertencia {
+    background-color: #FFF3CD;
+    border-left: 3pt solid #FFC107;
+    color: #856404;
+}
+
+.alerta-peligro {
+    background-color: var(--color-acento-claro);
+    border-left: 3pt solid var(--color-acento);
+    color: var(--color-peligro);
+    font-weight: 600;
+}
+
+.alerta-info {
+    background-color: #D1ECF1;
+    border-left: 3pt solid var(--color-info);
+    color: #0C5460;
+}
+
+/* ==================== FIRMA Y SELLO ==================== */
+.firma-seccion {
+    margin-top: 25pt;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20pt;
+}
+
+.firma-bloque {
+    text-align: center;
+    width: 180pt;
+}
+
+.firma-linea {
+    border-top: 1pt solid var(--color-texto);
+    margin-bottom: 4pt;
+    min-height: 40pt;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.firma-linea img {
+    max-height: 35pt;
+    max-width: 120pt;
+}
+
+.firma-nombre {
+    font-weight: 700;
+
+    font-size: {{tipografia.tamano_base}}pt;
+    color: var(--color-texto);
+}
+
+.firma-cargo {
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    color: var(--color-texto-secundario);
+}
+
+.firma-registro {
+    font-size: {{tipografia.tamano_mini}}pt;
+    color: var(--color-texto-claro);
+}
+
+.sello-bloque {
+    text-align: center;
+}
+
+.sello-bloque img {
+    width: 60pt;
+    height: 60pt;
+    opacity: 0.8;
+}
+
+/* ==================== CÓDIGO DE VERIFICACIÓN ==================== */
+.verificacion-seccion {
+    margin-top: 15pt;
+    text-align: center;
+    padding: 8pt;
+    border: 1pt dashed var(--color-borde);
+    border-radius: 3pt;
+}
+
+.verificacion-codigo {
+    font-family: {{tipografia.familia_monospace}};
+    font-size: 10pt;
+    font-weight: 700;
+    color: var(--color-primario);
+    letter-spacing: 2pt;
+}
+
+.verificacion-barcode {
+    margin-top: 4pt;
+}
+
+.verificacion-barcode img {
+    height: 25pt;
+}
+
+.verificacion-texto {
+    font-size: {{tipografia.tamano_mini}}pt;
+    color: var(--color-texto-claro);
+    margin-top: 2pt;
+}
+
+/* ==================== PIE DE PÁGINO FIJO ==================== */
+.footer-fijo {
+    position: fixed;
+    bottom: 0;
+
+    left: {{margenes.izquierdo}}mm;
+
+    right: {{margenes.derecho}}mm;
+}
+
+.footer-linea-superior {
+    border-top: 1.5pt solid var(--color-primario);
+    margin-bottom: 3pt;
+}
+
+.footer-contenido {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    font-size: {{tipografia.tamano_mini}}pt;
+    color: var(--color-texto-secundario);
+}
+
+.footer-lab {
+    font-weight: 700;
+    color: var(--color-primario);
+}
+
+.footer-separador {
+    margin: 0 4pt;
+    color: var(--color-borde);
+}
+
+.footer-disclaimer {
+    font-size: 5.5pt;
+    color: var(--color-texto-claro);
+    text-align: center;
+    margin-top: 2pt;
+}
+
+/* ==================== UTILIDADES ==================== */
+.texto-centro {
+    text-align: center;
+}
+
+.texto-derecha {
+    text-align: right;
+}
+
+.texto-izquierda {
+    text-align: left;
+}
+
+.texto-mayuscula {
+    text-transform: uppercase;
+}
+
+.texto-negrita {
+    font-weight: 700;
+}
+
+.texto-italic {
+    font-style: italic;
+}
+
+.texto-pequeno {
+    font-size: {{tipografia.tamano_pequeno}}pt;
+}
+
+.texto-mini {
+    font-size: {{tipografia.tamano_mini}}pt;
+}
+
+.texto-monospace {
+    font-family: {{tipografia.familia_monospace}};
+}
+
+.margen-superior-sm {
+    margin-top: 4pt;
+}
+
+.margen-superior-md {
+    margin-top: 8pt;
+}
+
+.margen-superior-lg {
+    margin-top: 15pt;
+}
+
+.margen-inferior-sm {
+    margin-bottom: 4pt;
+}
+
+.margen-inferior-md {
+    margin-bottom: 8pt;
+}
+
+.sin-bordes td {
+    border: none !important;
+}
+
+.sin-padding {
+    padding: 0 !important;
+}
+
+.separador {
+    border: none;
+    border-top: 0.5pt solid var(--color-borde);
+    margin: 8pt 0;
+}
+
+.separador-doble {
+    border: none;
+    border-top: 2pt double var(--color-primario);
+    margin: 10pt 0;
+}
+
+.bullet-list {
+    padding-left: 15pt;
+    margin: 4pt 0;
+}
+
+.bullet-list li {
+    margin-bottom: 2pt;
+
+    font-size: {{tipografia.tamano_base}}pt;
+}
+
+/* ==================== BREAK DE PÁGINA ==================== */
+.page-break {
+    page-break-before: always;
+}
+
+.page-break-avoid {
+    page-break-inside: avoid;
+}
+
+/* ==================== FORMATO EMPRESA ==================== */
+.empresa-header-adicional {
+    background-color: var(--color-primario-claro);
+    padding: 6pt 10pt;
+    margin-bottom: 8pt;
+    border-radius: 2pt;
+}
+
+.empresa-header-adicional .empresa-razon {
+    font-size: {{tipografia.tamano_subtitulo}}pt;
+    font-weight: 700;
+    color: var(--color-primario-oscuro);
+    text-transform: uppercase;
+}
+
+.empresa-header-adicional .empresa-nit {
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    color: var(--color-texto-secundario);
+}
+
+/* ==================== RESUMEN EJECUTIVO (Empresas) ==================== */
+.resumen-ejecutivo {
+    background-color: var(--color-fondo-alternado);
+    border: 1pt solid var(--color-borde);
+    border-radius: 3pt;
+    padding: 8pt;
+    margin-bottom: 10pt;
+}
+
+.resumen-ejecutivo .resumen-titulo {
+    font-weight: 700;
+    color: var(--color-primario-oscuro);
+
+    font-size: {{tipografia.tamano_pequeno}}pt;
+    text-transform: uppercase;
+    margin-bottom: 4pt;
+}
+
+.resumen-stats {
+    display: flex;
+    justify-content: space-around;
+    text-align: center;
+}
+
+.resumen-stat {
+    padding: 4pt 8pt;
+}
+
+.resumen-stat-valor {
+    font-size: 16pt;
+    font-weight: 700;
+    color: var(--color-primario);
+}
+
+.resumen-stat-label {
+    font-size: {{tipografia.tamano_mini}}pt;
+    color: var(--color-texto-secundario);
+    text-transform: uppercase;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   REPORTES DE LABORATORIO — Layout Ruffos (dos columnas, tablas, etc.)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Grid de paciente a dos columnas ───────────────────────────────────── */
+.paciente-dos-columnas {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    border: 1px solid var(--color-borde, #d0d0d0);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.paciente-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Línea divisoria central entre columnas */
+.paciente-col:first-child {
+    border-right: 1px solid var(--color-borde, #d0d0d0);
+}
+
+/* Cada fila dentro de la columna */
+.campo-inline {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    padding: 2.5px 8px;
+    border-bottom: 1px solid var(--color-borde-suave, #eaeaea);
+    font-size: 8pt;
+    line-height: 1.3;
+}
+
+.campo-inline:last-child {
+    border-bottom: none;
+}
+
+/* Labels en negrita, alineados a la derecha dentro del 30% */
+.campo-inline .campo-label {
+    flex: 0 0 38%;
+    font-weight: 700;
+    font-size: 7pt;
+    letter-spacing: 0.2pt;
+    color: var(--color-texto-secundario, #555);
+    text-align: left;
+    padding-right: 6px;
+}
+
+/* Valor al 62% restante */
+.campo-inline .campo-valor {
+    flex: 1;
+    font-weight: 600;
+    font-size: 8pt;
+    color: var(--color-texto, #1a1a1a);
+}
+
+/* ── Sección de resultados ─────────────────────────────────────────────── */
+.seccion-resultados {
+    margin-bottom: 4px;
+}
+
+.seccion-resultados-separada {
+    margin-top: 8px;
+    padding-top: 5px;
+    border-top: 1px dashed var(--color-borde, #c0c0c0);
+}
+
+/* Cabecera de sección: nombre + badge tipo */
+.seccion-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+    padding: 2px 0;
+}
+
+.seccion-nombre {
+    font-size: 9pt;
+    font-weight: 800;
+    color: var(--color-primario, #0d47a1);
+    letter-spacing: 0.4pt;
+    margin: 0;
+    border-bottom: 1.5px solid var(--color-primario, #0d47a1);
+    padding-bottom: 1px;
+}
+
+.seccion-tipo {
+    font-size: 6.5pt;
+    font-weight: 700;
+    color: #fff;
+    background-color: var(--color-primario, #0d47a1);
+    padding: 1px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.3pt;
+    text-transform: uppercase;
+}
+
+/* ── Tabla de resultados ───────────────────────────────────────────────── */
+.tabla-resultados {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8pt;
+    margin-bottom: 2px;
+}
+
+.tabla-resultados thead tr {
+    background-color: var(--color-primario, #0d47a1);
+    color: #fff;
+}
+
+.tabla-resultados thead th {
+    padding: 3px 6px;
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 0.2pt;
+    text-transform: uppercase;
+    text-align: left;
+    border: 1px solid var(--color-primario-oscuro, #0a3578);
+}
+
+.tabla-resultados tbody tr {
+    border-bottom: 1px solid var(--color-borde-suave, #eaeaea);
+}
+
+.tabla-resultados tbody tr:nth-child(even) {
+    background-color: var(--color-fila-alterna, #f7f9fc);
+}
+
+/* Ancho de columnas */
+.col-item {
+    width: 38%;
+}
+
+.col-resultado {
+    width: 17%;
+    text-align: center;
+}
+
+.col-unidades {
+    width: 18%;
+    text-align: center;
+}
+
+.col-referencia {
+    width: 27%;
+}
+
+/* Celdas */
+.celda-item {
+    padding: 2px 6px;
+    font-weight: 500;
+    font-size: 8pt;
+    color: var(--color-texto, #1a1a1a);
+}
+
+.item-abrev {
+    font-size: 6.5pt;
+    color: var(--color-texto-secundario, #777);
+    margin-left: 3px;
+    font-weight: 400;
+}
+
+.celda-resultado {
+    padding: 2px 6px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 8.5pt;
+    color: #1a1a1a;
+}
+
+.celda-unidades {
+    padding: 2px 6px;
+    text-align: center;
+    color: var(--color-texto-secundario, #555);
+    font-size: 7.5pt;
+}
+
+.celda-referencia {
+    padding: 2px 6px;
+    font-size: 7.5pt;
+    color: var(--color-texto-secundario, #555);
+}
+
+/* ── Indicadores visuales (colores por clasificación) ─────────────────── */
+.indicador-normal,
+.celda-resultado.indicador-normal {
+    color: var(--color-exito) !important;
+    background-color: transparent;
+}
+
+.indicador-bajo,
+.celda-resultado.indicador-bajo {
+    color: #0891B2 !important;
+    background-color: #E0F2FE !important;
+    font-weight: 700;
+}
+
+.indicador-alto,
+.celda-resultado.indicador-alto {
+    color: var(--color-peligro) !important;
+    background-color: #FEE2E2 !important;
+    font-weight: 700;
+}
+
+.indicador-critico_bajo,
+.celda-resultado.indicador-critico_bajo {
+    color: var(--color-info) !important;
+    background-color: #CCFBF1 !important;
+    font-weight: 800;
+    border-radius: 2px;
+}
+
+.indicador-critico_alto,
+.celda-resultado.indicador-critico_alto {
+    color: var(--color-peligro) !important;
+    background-color: #FEE2E2 !important;
+    font-weight: 800;
+    border-radius: 2px;
+}
+
+.indicador-sin_rango,
+.celda-resultado.indicador-sin_rango {
+    color: #94A3B8 !important;
+    background-color: transparent;
+}
+
+.fila-bajo td,
+tr.fila-bajo td {
+    border-left: 3px solid #0891B2;
+}
+
+.fila-alto td,
+tr.fila-alto td {
+    border-left: 3px solid var(--color-peligro);
+}
+
+.fila-critico_bajo td,
+tr.fila-critico_bajo td {
+    border-left: 3px solid var(--color-info);
+    background-color: #CCFBF1;
+}
+
+.fila-critico_alto td,
+tr.fila-critico_alto td {
+    border-left: 3px solid var(--color-peligro);
+    background-color: #FEE2E2;
+}
+
+.fila-sin_rango td,
+tr.fila-sin_rango td {
+    border-left: 3px solid #94A3B8;
+}
+
+/* ── Técnica ───────────────────────────────────────────────────────────── */
+.tecnica-bloque {
+    margin-top: 6px;
+    padding: 4px 8px;
+    font-size: 7.5pt;
+    background-color: var(--color-fondo-suave, #f5f5f5);
+    border-left: 2px solid var(--color-primario, #0d47a1);
+    border-radius: 0 2px 2px 0;
+}
+
+.tecnica-label {
+    font-weight: 700;
+    color: var(--color-texto-secundario, #555);
+}
+
+.tecnica-valor {
+    font-weight: 600;
+    color: var(--color-texto, #1a1a1a);
+}
+
+/* ── Observaciones ─────────────────────────────────────────────────────── */
+.observaciones-bloque {
+    margin-top: 6px;
+    padding: 5px 8px;
+    border: 1px solid var(--color-borde, #d0d0d0);
+    border-radius: 3px;
+    background-color: #fffde7;
+}
+
+.observaciones-titulo {
+    font-size: 8pt;
+    font-weight: 700;
+    color: var(--color-texto, #1a1a1a);
+    margin: 0 0 2px 0;
+}
+
+.observaciones-item {
+    font-size: 7.5pt;
+    color: var(--color-texto, #333);
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+}
+
+.observaciones-item::before {
+    content: "• ";
+    font-weight: 700;
+    color: var(--color-primario, #0d47a1);
+}
+
+/* ── Fecha de entrega ──────────────────────────────────────────────────── */
+.entrega-bloque {
+    margin-top: 5px;
+    font-size: 7.5pt;
+    text-align: right;
+    color: var(--color-texto-secundario, #555);
+}
+
+.entrega-label {
+    font-weight: 600;
+}
+
+.entrega-valor {
+    font-weight: 700;
+    color: var(--color-texto, #1a1a1a);
+}
+
+/* ── Resultado texto plano (fallback) ──────────────────────────────────── */
+.resultado-texto-plano {
+    padding: 8px;
+    border: 1px solid var(--color-borde, #d0d0d0);
+    border-radius: 3px;
+    font-size: 8pt;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    color: var(--color-texto, #1a1a1a);
+}
+
+/* ── Badge urgente ─────────────────────────────────────────────────────── */
+.badge-urgente {
+    display: inline-block;
+    background-color: #B91C1C;
+    color: #fff;
+    font-size: 8pt;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 3px;
+    letter-spacing: 0.5pt;
+    animation: pulse-urgente 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-urgente {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* ── Pie fiscal empresa ────────────────────────────────────────────────── */
+.empresa-fiscal {
+    margin-top: 8px;
+    padding: 4px 8px;
+    font-size: 6.5pt;
+    color: var(--color-texto-secundario, #666);
+    border-top: 1px solid var(--color-borde, #d0d0d0);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    text-align: center;
+}
+
+/* ── Verificación ──────────────────────────────────────────────────────── */
+.verificacion-bloque {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding: 6px 8px;
+    border: 1px dashed var(--color-borde, #c0c0c0);
+    border-radius: 3px;
+    background-color: var(--color-fondo-suave, #fafafa);
+}
+
+.verificacion-codigo {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.verificacion-codigo .campo-label {
+    font-size: 7pt;
+    color: var(--color-texto-secundario, #888);
+    text-transform: uppercase;
+    letter-spacing: 0.4pt;
+}
+
+.codigo-ver {
+    font-size: 10pt;
+    font-weight: 800;
+    font-family: 'Courier New', monospace;
+    color: var(--color-primario, #0d47a1);
+    letter-spacing: 1pt;
+}
+
+.verificacion-qr {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qr-img {
+    width: 65px;
+    height: 65px;
+    object-fit: contain;
+}
+
+.verificacion-barras {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.barcode-img {
+    height: 38px;
+    width: auto;
+    max-width: 220px;
+    object-fit: contain;
+}
+
+/* ── Firmas ────────────────────────────────────────────────────────────── */
+.firmas-bloque {
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-end;
+    margin-top: 20px;
+    gap: 15px;
+}
+
+.firma-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    min-width: 140px;
+}
+
+.firma-linea {
+    width: 130px;
+    border-bottom: 1px solid var(--color-texto, #333);
+    margin-bottom: 3px;
+}
+
+.firma-img {
+    max-height: 50px;
+    max-width: 120px;
+    margin-bottom: 1px;
+}
+
+.sello-img {
+    max-height: 65px;
+    max-width: 75px;
+    opacity: 0.85;
+}
+
+.firma-nombre {
+    font-size: 8pt;
+    font-weight: 700;
+    color: var(--color-texto, #1a1a1a);
+    margin: 1px 0 0 0;
+}
+
+.firma-rol {
+    font-size: 7pt;
+    color: var(--color-texto-secundario, #666);
+    margin: 0;
+}
+
+.firma-mp {
+    font-size: 7pt;
+    color: var(--color-texto-secundario, #888);
+    margin: 0;
+}
+
+/* ── Nota legal ────────────────────────────────────────────────────────── */
+.nota-legal {
+    margin-top: 12px;
+    padding: 4px 8px;
+    font-size: 6pt;
+    color: var(--color-texto-secundario, #999);
+    text-align: center;
+    border-top: 0.5px solid var(--color-borde-suave, #e0e0e0);
+    line-height: 1.4;
+}
+
+.nota-legal p {
+    margin: 0;
+}

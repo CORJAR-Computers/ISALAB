@@ -1,0 +1,264 @@
+{% extends "base_report.html" %}
+
+{% block css_adicional %}
+<style>
+    .consentimiento-header {
+        text-align: center;
+        margin-bottom: 25px;
+        padding: 20px;
+        background: linear-gradient(135deg, {{colores.primario_claro}} 0%, {{colores.primario}} 100%);
+        border-radius: 8px;
+        color: white;
+    }
+    .consentimiento-header h1 {
+        margin: 0;
+        font-size: 18pt;
+        font-weight: bold;
+    }
+    .consentimiento-header p {
+        margin: 5px 0 0 0;
+        font-size: 10pt;
+        opacity: 0.9;
+    }
+    .info-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: {{colores.fondo_alternado}};
+        border-left: 4px solid {{colores.primario}};
+        border-radius: 4px;
+    }
+    .info-section h3 {
+        margin: 0 0 10px 0;
+        color: {{colores.primario}};
+        font-size: 12pt;
+        border-bottom: 1px solid {{colores.borde}};
+        padding-bottom: 5px;
+    }
+    .info-section p, .info-section div {
+        font-size: 10pt;
+        line-height: 1.6;
+        margin: 5px 0;
+    }
+    .patient-data {
+        display: grid;
+        grid-template-columns: 30% 70%;
+        gap: 8px;
+        margin: 10px 0;
+    }
+    .patient-data dt {
+        font-weight: bold;
+        color: {{colores.primario}};
+        font-size: 10pt;
+    }
+    .patient-data dd {
+        margin: 0;
+        font-size: 10pt;
+        color: {{colores.texto_secundario}};
+    }
+    .texto-consentimiento {
+        text-align: justify;
+        line-height: 1.8;
+        font-size: 10pt;
+        margin: 15px 0;
+        padding: 15px;
+        background-color: white;
+        border: 1px solid {{colores.borde}};
+        border-radius: 4px;
+    }
+    .firma-section {
+        margin-top: 50px;
+        page-break-inside: avoid;
+    }
+    .firma-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+        margin-top: 30px;
+    }
+    .firma-box {
+        text-align: center;
+        padding-top: 10px;
+    }
+    .firma-linea {
+        border-top: 1px solid {{colores.primario}};
+        margin-top: 50px;
+        padding-top: 8px;
+    }
+    .firma-nombre {
+        font-weight: bold;
+        font-size: 10pt;
+        color: {{colores.texto_principal}};
+    }
+    .firma-rol {
+        font-size: 9pt;
+        color: {{colores.texto_secundario}};
+    }
+    .checkbox-item {
+        margin: 8px 0;
+        padding: 8px;
+        background-color: white;
+        border: 1px solid {{colores.borde}};
+        border-radius: 4px;
+    }
+    .checkbox-item::before {
+        content: "☐";
+        margin-right: 8px;
+        font-size: 12pt;
+    }
+    .nota-legal {
+        margin-top: 30px;
+        padding: 12px;
+        background-color: #FEF3C7;
+        border-left: 4px solid {{colores.advertencia}};
+        border-radius: 4px;
+        font-size: 9pt;
+        color: {{colores.texto_principal}};
+    }
+    @media print {
+        .consentimiento-header {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block cuerpo_reporte %}
+<div class="consentimiento-header">
+    <h1>📋 CONSENTIMIENTO INFORMADO</h1>
+    <p>{{lab.nombre}} - {{lab.direccion}}</p>
+    <p>{{lab.telefono_principal}} | {{lab.email_principal}}</p>
+</div>
+
+<div class="info-section">
+    <h3>📄 Información del Procedimiento</h3>
+    <dl class="patient-data">
+        <dt>Fecha:</dt>
+        <dd>{{fecha}}</dd>
+
+        <dt>Tipo de Procedimiento:</dt>
+        <dd><strong>{{consentimiento.tipo_procedimiento}}</strong></dd>
+
+        {% if consentimiento.codigo_recepcion %}
+        <dt>Código de Atención:</dt>
+        <dd>{{consentimiento.codigo_recepcion}}</dd>
+        {% endif %}
+    </dl>
+</div>
+
+<div class="info-section">
+    <h3>🐾 Datos del Paciente y Propietario</h3>
+    <dl class="patient-data">
+        <dt>Paciente:</dt>
+        <dd><strong>{{consentimiento.animal_nombre}}</strong> ({{consentimiento.animal_codigo}})</dd>
+
+        <dt>Especie / Raza:</dt>
+        <dd>{{consentimiento.especie}}{% if consentimiento.raza %} - {{consentimiento.raza}}{% endif %}</dd>
+
+        <dt>Propietario:</dt>
+        <dd>{{consentimiento.propietario}}</dd>
+
+        {% if consentimiento.documento_propietario %}
+        <dt>Documento de Identidad:</dt>
+        <dd>{{consentimiento.documento_propietario}}</dd>
+        {% endif %}
+
+        {% if consentimiento.telefono %}
+        <dt>Teléfono:</dt>
+        <dd>{{consentimiento.telefono}}</dd>
+        {% endif %}
+    </dl>
+</div>
+
+{% if consentimiento.descripcion_procedimiento %}
+<div class="info-section">
+    <h3>📝 Descripción del Procedimiento</h3>
+    <div class="texto-consentimiento">
+        {{consentimiento.descripcion_procedimiento}}
+    </div>
+</div>
+{% endif %}
+
+{% if consentimiento.riesgos %}
+<div class="info-section">
+    <h3>⚠️ Riesgos y Complicaciones Potenciales</h3>
+    <div class="texto-consentimiento">
+        {{consentimiento.riesgos}}
+    </div>
+</div>
+{% endif %}
+
+{% if consentimiento.cuidados_post %}
+<div class="info-section">
+    <h3>💊 Cuidados Post-Procedimiento</h3>
+    <div class="texto-consentimiento">
+        {{consentimiento.cuidados_post}}
+    </div>
+</div>
+{% endif %}
+
+<div class="info-section">
+    <h3>✅ Declaración de Consentimiento</h3>
+    <div class="texto-consentimiento">
+        <p>
+            Yo, <strong>{{consentimiento.propietario}}</strong>, identificado(a) con documento de identidad
+            N° <strong>{{consentimiento.documento_propietario or '_______________'}}</strong>,
+            en mi calidad de propietario(a) o responsable del animal descrito anteriormente,
+            <strong>DECLARO</strong> que:
+        </p>
+        <div class="checkbox-item">
+            He recibido información completa y comprensible sobre el procedimiento propuesto,
+            incluyendo su naturaleza, propósito, beneficios esperados y alternativas disponibles.
+        </div>
+        <div class="checkbox-item">
+            Se me han explicado los riesgos potenciales, complicaciones y efectos adversos
+            que podrían presentarse como consecuencia del procedimiento.
+        </div>
+        <div class="checkbox-item">
+            He tenido la oportunidad de hacer preguntas y todas han sido respondidas
+            de manera satisfactoria por el médico veterinario tratante.
+        </div>
+        <div class="checkbox-item">
+            Comprendo los cuidados post-operatorios o post-procedimiento requeridos y
+            me comprometo a seguirlos para garantizar el bienestar del animal.
+        </div>
+        <div class="checkbox-item">
+            Entiendo que la medicina veterinaria no es una ciencia exacta y que los resultados
+            pueden variar dependiendo de múltiples factores individuales del paciente.
+        </div>
+        <p style="margin-top: 15px;">
+            Por lo tanto, otorgo mi <strong>CONSENTIMIENTO LIBRE E INFORMADO</strong> para que se realice
+            el procedimiento descrito, asumiendo de manera consciente los riesgos inherentes al mismo.
+        </p>
+    </div>
+</div>
+
+<div class="nota-legal">
+    <strong>NOTA LEGAL:</strong> Este documento tiene validez legal y constituye prueba de que el propietario
+    o responsable del animal fue informado adecuadamente sobre el procedimiento veterinario a realizar.
+    De conformidad con la legislación vigente, este consentimiento puede ser revocado en cualquier momento
+    antes de la ejecución del procedimiento.
+</div>
+
+<div class="firma-section">
+    <div class="firma-grid">
+        <div class="firma-box">
+            <div class="firma-linea">
+                <div class="firma-nombre">{{consentimiento.propietario}}</div>
+                <div class="firma-rol">Propietario(a) o Responsable</div>
+                <div class="firma-mp">C.C. {{consentimiento.documento_propietario or '_______________'}}</div>
+                <div class="firma-mp">Firma</div>
+            </div>
+        </div>
+
+        <div class="firma-box">
+            <div class="firma-linea">
+                <div class="firma-nombre">{{consentimiento.veterinario or '_______________'}}</div>
+                <div class="firma-rol">Médico Veterinario</div>
+                <div class="firma-mp">T.P. {{consentimiento.mp_veterinario or '_______________'}}</div>
+                <div class="firma-mp">Firma y Sello</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

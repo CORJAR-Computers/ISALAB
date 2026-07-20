@@ -1,0 +1,201 @@
+{# templates/laboratorio.html - Resultados para persona natural #}
+{% extends "base_report.html" %}
+
+{% block cuerpo_reporte %}
+
+{# ── Título del informe ────────────────────────────────────────────────── #}
+<div class="reporte-titulo">
+    <h1>RESULTADOS DE LABORATORIO</h1>
+    {% if tipo_analisis %}
+    <p class="subtitulo">{{tipo_analisis}}</p>
+    {% endif %}
+    {% if urgente %}
+    <span class="badge-urgente">URGENTE</span>
+    {% endif %}
+</div>
+
+{# ── Datos del paciente — dos columnas (persona natural) ───────────────── #}
+<div class="paciente-info paciente-dos-columnas">
+
+    {# Columna izquierda: datos del paciente #}
+    <div class="paciente-col">
+        <div class="campo-inline">
+            <span class="campo-label">NOMBRE</span>
+            <span class="campo-valor">{{animal.nombre|upper}}</span>
+        </div>
+        <div class="campo-inline">
+            <span class="campo-label">ESPECIE</span>
+            <span class="campo-valor">{{animal.especie|upper}}</span>
+        </div>
+        <div class="campo-inline">
+            <span class="campo-label">RAZA</span>
+            <span class="campo-valor">{{(animal.raza or '—')|upper}}</span>
+        </div>
+        <div class="campo-inline">
+            <span class="campo-label">SEXO</span>
+            <span class="campo-valor">{{datos_adicionales.sexo|default('—')|upper}}</span>
+        </div>
+        <div class="campo-inline">
+            <span class="campo-label">EDAD</span>
+            <span class="campo-valor">{{edad_texto|upper}}</span>
+        </div>
+    </div>
+
+    {# Columna derecha: profesional / propietario / toma #}
+    <div class="paciente-col">
+        <div class="campo-inline">
+            <span class="campo-label">MEDICO VETERINARIO</span>
+            <span class="campo-valor">{{veterinario_ref|upper}}</span>
+        </div>
+        <div class="campo-inline">
+            <span class="campo-label">PROPIETARIO</span>
+            <span class="campo-valor">{{(animal.propietario or '—')|upper}}</span>
+        </div>
+        <div class="campo-inline">
+            <span class="campo-label">MUNICIPIO</span>
+            <span class="campo-valor">
+                {{datos_adicionales.municipio|default('—')|upper}}
+                {% if datos_adicionales.departamento %}
+                , {{datos_adicionales.departamento|upper}}
+                {% endif %}
+            </span>
+        </div>
+        <div class="campo-inline">
+            <span class="campo-label">TOMA MUESTRA</span>
+            <span class="campo-valor">{{fecha_toma}}</span>
+        </div>
+    </div>
+
+</div>
+
+{# ── Resultados por sección ────────────────────────────────────────────── #}
+{% if hay_resultados %}
+{% for seccion in secciones %}
+
+<div class="seccion-resultados{% if not loop.first %} seccion-resultados-separada{% endif %}">
+
+    <div class="seccion-header">
+        <h2 class="seccion-nombre">{{seccion.nombre|upper}}</h2>
+        {% if seccion.nombre == tipo_analisis or loop.first %}
+        <span class="seccion-tipo">CONTROL</span>
+        {% endif %}
+    </div>
+
+    <table class="tabla-resultados">
+        <thead>
+            <tr>
+                <th class="col-item">Ítem</th>
+                <th class="col-resultado">Resultados</th>
+                <th class="col-unidades">Unidades</th>
+                <th class="col-referencia">Referencias</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in seccion['items'] %}
+            <tr class="fila-{{item.clasificacion}}">
+                <td class="celda-item">
+                    {{item.item}}
+                    {% if item.abreviatura %}
+                    <span class="item-abrev">{{item.abreviatura}}</span>
+                    {% endif %}
+                </td>
+                <td class="celda-resultado indicador-{{item.clasificacion}}">
+                    {% if item.resultado is none or item.resultado == '' %}
+                    —
+                    {% else %}
+                    {{formatear_valor_numerico(item.resultado)}}
+                    {% endif %}
+                </td>
+                <td class="celda-unidades">{{item.unidades}}</td>
+                <td class="celda-referencia">{{item.ref_texto}}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+{% endfor %}
+
+{% else %}
+<div class="seccion-resultados">
+    <div class="resultado-texto-plano">
+        <p>{{muestra.resultado|default('Sin resultados registrados.')}}</p>
+    </div>
+</div>
+{% endif %}
+
+{# ── Técnica ───────────────────────────────────────────────────────────── #}
+{% if tecnica %}
+<div class="tecnica-bloque">
+    <span class="tecnica-label">Técnica:</span>
+    <span class="tecnica-valor">{{tecnica}}</span>
+</div>
+{% endif %}
+
+{# ── Observaciones ─────────────────────────────────────────────────────── #}
+{% if observaciones %}
+<div class="observaciones-bloque">
+    <h3 class="observaciones-titulo">Observaciones:</h3>
+    {% for obs in observaciones %}
+    <p class="observaciones-item">{{obs}}</p>
+    {% endfor %}
+</div>
+{% endif %}
+
+{# ── Fecha de entrega ──────────────────────────────────────────────────── #}
+{% if fecha_entrega %}
+<div class="entrega-bloque">
+    <span class="entrega-label">Fecha de entrega:</span>
+    <span class="entrega-valor">{{fecha_entrega}}</span>
+</div>
+{% endif %}
+
+{# ── Código de verificación + QR + código de barras ───────────────────── #}
+<div class="verificacion-bloque">
+    <div class="verificacion-codigo">
+        <span class="campo-label">Código de Verificación</span>
+        <span class="codigo-ver">{{codigo_verificacion}}</span>
+    </div>
+    <div class="verificacion-qr">
+        {% if qr_base64 %}
+        <img src="{{qr_base64}}" alt="QR" class="qr-img">
+        {% endif %}
+    </div>
+    <div class="verificacion-barras">
+        {% if codigo_barras %}
+        <img src="{{codigo_barras}}" alt="Código de barras" class="barcode-img">
+        {% endif %}
+    </div>
+</div>
+
+{# ── Firmas y sello ────────────────────────────────────────────────────── #}
+<div class="firmas-bloque">
+    <div class="firma-item">
+        {% if firma_base64 %}
+        <img src="{{firma_base64}}" alt="Firma" class="firma-img">
+        {% else %}
+        <div class="firma-linea"></div>
+        {% endif %}
+        <p class="firma-nombre">{{veterinario_ref|default('M.V.Z.')}}</p>
+        <p class="firma-rol">Médico Veterinario</p>
+        {% if datos_adicionales.mp_veterinario %}
+        <p class="firma-mp">M.P. {{datos_adicionales.mp_veterinario}}</p>
+        {% endif %}
+    </div>
+
+    <div class="firma-item sello-item">
+        {% if sello_base64 %}
+        <img src="{{sello_base64}}" alt="Sello" class="sello-img">
+        {% endif %}
+        <p class="firma-rol">Sello</p>
+    </div>
+</div>
+
+{# ── Nota legal ────────────────────────────────────────────────────────── #}
+<div class="nota-legal">
+    <p>Este documento es emitido por {{lab.nombre}} — {{lab.nit}}.
+        La verificación de autenticidad se realiza mediante el código o QR adjunto.
+        Documento sin validez sin firma y sello.</p>
+</div>
+
+{% endblock %}

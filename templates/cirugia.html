@@ -1,0 +1,615 @@
+<!-- templates/cirugia.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reporte de Cirugía - {{lab.nombre}}</title>
+    <style>
+        {% include 'styles/base.css' %}
+    </style>
+    <style>
+        @page {
+            size: {{config.tipo_papel}};
+            margin: {{margenes.superior}}mm {{margenes.derecho}}mm {{margenes.inferior}}mm {{margenes.izquierdo}}mm;
+            @bottom-center {
+                content: element(footer);
+            }
+        }
+        
+        .cir-bandeja-titulo {
+            background-color: {{colores.acento_claro}};
+            border: 1pt solid {{colores.acento}};
+            border-radius: 3pt;
+            padding: 6pt 10pt;
+            margin-bottom: 10pt;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .cir-bandeja-titulo .cir-tipo {
+            font-size: 12pt;
+            font-weight: 700;
+            color: {{colores.peligro}};
+            text-transform: uppercase;
+        }
+        
+        .cir-bandeja-titulo .cir-nivel {
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            padding: 2pt 8pt;
+            border-radius: 10pt;
+            font-weight: 600;
+        }
+        
+        .cir-nivel.menor { background-color: #D5F5E3; color: #1E8449; }
+        .cir-nivel.mayor { background-color: #FFF3CD; color: #856404; }
+        .cir-nivel.especial { background-color: {{colores.acento_claro}}; color: {{colores.peligro}}; }
+        
+        .cir-timeline {
+            position: relative;
+            padding-left: 25pt;
+        }
+        
+        .cir-timeline::before {
+            content: "";
+            position: absolute;
+            left: 8pt;
+            top: 0;
+            bottom: 0;
+            width: 2pt;
+            background-color: {{colores.borde}};
+        }
+        
+        .cir-fase {
+            position: relative;
+            margin-bottom: 8pt;
+        }
+        
+        .cir-fase::before {
+            content: "";
+            position: absolute;
+            left: -20pt;
+            top: 6pt;
+            width: 12pt;
+            height: 12pt;
+            background-color: {{colores.primario}};
+            border-radius: 50%;
+            border: 2pt solid white;
+        }
+        
+        .cir-fase.tiempo-inicio::before { background-color: {{colores.secundario}}; }
+        .cir-fase.tiempo-fin::before { background-color: {{colores.peligro}}; }
+        
+        .cir-fase-titulo {
+            font-size: {{tipografia.tamano_subtitulo}}pt;
+            font-weight: 700;
+            color: {{colores.primario_oscuro}};
+            margin-bottom: 3pt;
+        }
+        
+        .cir-fase-contenido {
+            background-color: {{colores.fondo_alternado}};
+            padding: 6pt 8pt;
+            border-radius: 3pt;
+            font-size: {{tipografia.tamano_base}}pt;
+            line-height: 1.5;
+        }
+        
+        .cir-fase-hora {
+            font-size: {{tipografia.tamano_mini}}pt;
+            color: {{colores.texto_claro}};
+            font-family: {{tipografia.familia_monospace}};
+        }
+        
+        .cir-medicamentos-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4pt;
+        }
+        
+        .cir-med-item {
+            padding: 4pt 6pt;
+            background-color: {{colores.fondo_alternado}};
+            border-radius: 2pt;
+            border-left: 2pt solid {{colores.info}};
+        }
+        
+        .cir-med-nombre {
+            font-weight: 600;
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            color: {{colores.texto_principal}};
+        }
+        
+        .cir-med-dosis {
+            font-size: {{tipografia.tamano_mini}}pt;
+            color: {{colores.texto_secundario}};
+        }
+        
+        .cir-equipo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3pt;
+        }
+        
+        .cir-equipo-item {
+            display: flex;
+            align-items: center;
+            gap: 4pt;
+            padding: 3pt 6pt;
+            background-color: {{colores.fondo_alternado}};
+            border-radius: 2pt;
+        }
+        
+        .cir-equipo-rol {
+            font-size: {{tipografia.tamano_mini}}pt;
+            font-weight: 600;
+            color: {{colores.primario}};
+            text-transform: uppercase;
+            min-width: 60pt;
+        }
+        
+        .cir-equipo-nombre {
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            color: {{colores.texto_principal}};
+        }
+        
+        .cir-post-operatorio-box {
+            background-color: {{colores.secundario_claro}};
+            border: 1pt solid {{colores.secundario}};
+            border-radius: 3pt;
+            padding: 8pt;
+            margin-top: 8pt;
+        }
+        
+        .cir-post-titulo {
+            font-weight: 700;
+            color: {{colores.secundario_oscuro}};
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            text-transform: uppercase;
+            margin-bottom: 4pt;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Encabezado -->
+    <div class="encabezado page-break-avoid">
+        <div class="encabezado-logo">
+            {% if lab.logo_b64 %}
+            <img src="{{lab.logo_b64}}" alt="Logo {{lab.nombre}}">
+            {% endif %}
+        </div>
+        <div class="encabezado-info">
+            <div class="lab-nombre">{{lab.nombre}}</div>
+            <div class="lab-nombre-comercial">{{lab.nombre_comercial}}</div>
+        </div>
+        <div class="encabezado-datos">
+            <div class="dato-item">NIT: {{lab.nit}}</div>
+            <div class="dato-item">{{lab.direccion_completa}}</div>
+            <div class="dato-item">Tel: {{lab.telefono_principal}}</div>
+        </div>
+    </div>
+
+    <div class="reporte-titulo page-break-avoid">
+        <h1>Reporte Quirúrgico</h1>
+        <div class="subtitulo">Registro de Procedimiento Quirúrgico</div>
+    </div>
+
+    <!-- Bandeja de identificación -->
+    <div class="cir-bandeja-titulo page-break-avoid">
+        <div class="cir-tipo">{{datos.tipo_cirugia | default_if_empty('Cirugía')}}</div>
+        <div style="text-align: center;">
+            <div style="font-size: {{tipografia.tamano_pequeno}}pt; color: {{colores.texto_secundario}};">No. Reporte</div>
+            <div style="font-size: 11pt; font-weight: 700; color: {{colores.primario_oscuro}};">{{metadatos.numero_reporte}}</div>
+        </div>
+        <div class="cir-nivel {{datos.nivel | lower | default('mayor')}}">
+            {{datos.nivel | default('Mayor')}}
+        </div>
+    </div>
+
+    <!-- Info básica -->
+    <div class="info-grid info-grid-4col page-break-avoid" style="margin-bottom: 8pt; font-size: {{tipografia.tamano_pequeno}}pt;">
+        <div class="info-item">
+            <span class="info-label">Fecha Cirugía</span>
+            <span class="info-valor destacado">{{datos.fecha_cirugia | default_if_empty('—')}}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Hora Inicio</span>
+            <span class="info-valor">{{datos.hora_inicio | default_if_empty('—')}}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Hora Fin</span>
+            <span class="info-valor">{{datos.hora_fin | default_if_empty('—')}}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Duración</span>
+            <span class="info-valor destacado">{{datos.duracion | default_if_empty('—')}}</span>
+        </div>
+    </div>
+
+    <!-- Paciente -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Datos del Paciente</div>
+        <div class="seccion-contenido">
+            <div class="info-grid info-grid-4col">
+                <div class="info-item">
+                    <span class="info-label">Nombre</span>
+                    <span class="info-valor destacado">{{datos.paciente.nombre | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Especie/Raza</span>
+                    <span class="info-valor">{{datos.paciente.especie | default_if_empty('')}} / {{datos.paciente.raza | default_if_empty('')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Sexo</span>
+                    <span class="info-valor">{{datos.paciente.sexo | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Peso</span>
+                    <span class="info-valor">{{datos.paciente.peso | default_if_empty('—')}} {{datos.paciente.peso_unidad | default_if_empty('kg')}}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Equipo Quirúrgico -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Equipo Quirúrgico</div>
+        <div class="seccion-contenido">
+            <div class="cir-equipo-grid">
+                <div class="cir-equipo-item">
+                    <span class="cir-equipo-rol">Cirujano</span>
+                    <span class="cir-equipo-nombre">{{datos.equipo.cirujano | default_if_empty('—')}}</span>
+                </div>
+                <div class="cir-equipo-item">
+                    <span class="cir-equipo-rol">Ayudante</span>
+                    <span class="cir-equipo-nombre">{{datos.equipo.ayudante | default_if_empty('—')}}</span>
+                </div>
+                <div class="cir-equipo-item">
+                    <span class="cir-equipo-rol">Anestesiólogo</span>
+                    <span class="cir-equipo-nombre">{{datos.equipo.anestesiologo | default_if_empty('—')}}</span>
+                </div>
+                <div class="cir-equipo-item">
+                    <span class="cir-equipo-rol">Instrumentista</span>
+                    <span class="cir-equipo-nombre">{{datos.equipo.instrumentista | default_if_empty('—')}}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Diagnóstico Quirúrgico -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Diagnóstico Quirúrgico</div>
+        <div class="seccion-contenido">
+            <div class="hc-campo-texto">
+                <strong>{{datos.diagnostico | default_if_empty('—')}}</strong>
+                {% if datos.cie10 %}<span class="texto-pequeno" style="color: {{colores.texto_claro}}; margin-left: 8pt;">CIE-10: {{datos.cie10}}</span>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Procedimiento Realizado -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Procedimiento Realizado</div>
+        <div class="seccion-contenido">
+            <div class="hc-campo-texto">{{datos.procedimiento | default_if_empty('—')}}</div>
+        </div>
+    </div>
+
+    <!-- Timeline de la Cirugía -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Descripción del Procedimiento</div>
+        <div class="seccion-contenido">
+            <div class="cir-timeline">
+                {% for fase in datos.fases %}
+                <div class="cir-fase {% if loop.first %}tiempo-inicio{% elif loop.last %}tiempo-fin{% endif %}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="cir-fase-titulo">{{fase.nombre | default_if_empty('Fase')}}</div>
+                        {% if fase.hora %}
+                        <div class="cir-fase-hora">{{fase.hora}}</div>
+                        {% endif %}
+                    </div>
+                    <div class="cir-fase-contenido">{{fase.descripcion | default_if_empty('—')}}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Protocolo Anestésico -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Protocolo Anestésico</div>
+        <div class="seccion-contenido">
+            <div class="info-grid info-grid-3col" style="margin-bottom: 4pt;">
+                <div class="info-item">
+                    <span class="info-label">Tipo Anestesia</span>
+                    <span class="info-valor">{{datos.anestesia.tipo | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Inducción</span>
+                    <span class="info-valor">{{datos.anestesia.induccion | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Mantenimiento</span>
+                    <span class="info-valor">{{datos.anestesia.mantenimiento | default_if_empty('—')}}</span>
+                </div>
+            </div>
+            
+            {% if datos.anestesia.medicamentos %}
+            <div class="cir-medicamentos-grid">
+                {% for med in datos.anestesia.medicamentos %}
+                <div class="cir-med-item">
+                    <div class="cir-med-nombre">{{med.nombre | default_if_empty('—')}}</div>
+                    <div class="cir-med-dosis">{{med.dosis | default_if_empty('')}} — {{med.via | default_if_empty('')}}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if datos.anestesia.signos_monitoreo %}
+            <div style="margin-top: 6pt;">
+                <div class="hc-campo-label" style="margin-bottom: 3pt;">Signos Monitoreados Durante Anestesia</div>
+                <table class="tabla">
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>FC (lpm)</th>
+                            <th>FR (rpm)</th>
+                            <th>SpO₂ (%)</th>
+                            <th>T° (°C)</th>
+                            <th>Pulso</th>
+                            <th>Reflejos</th>
+                            <th>Est. Anest.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sm in datos.anestesia.signos_monitoreo %}
+                        <tr>
+                            <td class="centrado texto-pequeno monospace">{{sm.hora | default_if_empty('—')}}</td>
+                            <td class="centrado">{{sm.fc | default_if_empty('—')}}</td>
+                            <td class="centrado">{{sm.fr | default_if_empty('—')}}</td>
+                            <td class="centrado">{{sm.spo2 | default_if_empty('—')}}</td>
+                            <td class="centrado">{{sm.temperatura | default_if_empty('—')}}</td>
+                            <td class="centrado">{{sm.pulso | default_if_empty('—')}}</td>
+                            <td class="texto-pequeno">{{sm.reflejos | default_if_empty('—')}}</td>
+                            <td class="centrado texto-pequeno">{{sm.estado_anestesico | default_if_empty('—')}}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Hallazgos -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Hallazgos Intraoperatorios</div>
+        <div class="seccion-contenido">
+            <div class="hc-campo-texto">{{datos.hallazgos | default_if_empty('No descritos')}}</div>
+        </div>
+    </div>
+
+    <!-- Complicaciones -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Complicaciones</div>
+        <div class="seccion-contenido">
+            {% if datos.complicaciones %}
+            <div class="hc-campo-texto">{{datos.complicaciones}}</div>
+            {% else %}
+            <div class="alerta alerta-info" style="margin: 0;">No se presentaron complicaciones durante el procedimiento.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Muestras / Biopsias -->
+    {% if datos.muestras %}
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Muestras Enviadas a Laboratorio</div>
+        <div class="seccion-contenido">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Descripción</th>
+                        <th>Destino</th>
+                        <th>No. Muestra</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for muestra in datos.muestras %}
+                    <tr>
+                        <td>{{muestra.tipo | default_if_empty('—')}}</td>
+                        <td>{{muestra.descripcion | default_if_empty('—')}}</td>
+                        <td class="texto-pequeno">{{muestra.destino | default_if_empty('—')}}</td>
+                        <td class="centrado monospace">{{muestra.codigo | default_if_empty('—')}}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Material / Instrumental -->
+    {% if datos.material %}
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Material e Instrumental Utilizado</div>
+        <div class="seccion-contenido">
+            <div class="info-grid info-grid-3col">
+                {% for mat in datos.material %}
+                <div class="info-item">
+                    <span class="info-label">{{mat.nombre | default_if_empty('—')}}</span>
+                    <span class="info-valor">{{mat.detalle | default_if_empty('—')}}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Conteo de Instrumental -->
+    {% if datos.conteo_instrumental %}
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Conteo de Instrumental y Gasas</div>
+        <div class="seccion-contenido">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th>Ítem</th>
+                        <th>Antes</th>
+                        <th>Después</th>
+                        <th>Diferencia</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in datos.conteo_instrumental %}
+                    <tr>
+                        <td>{{item.nombre | default_if_empty('—')}}</td>
+                        <td class="centrado">{{item.antes | default_if_empty('—')}}</td>
+                        <td class="centrado">{{item.despues | default_if_empty('—')}}</td>
+                        <td class="centrado">{{item.diferencia | default_if_empty('—')}}</td>
+                        <td class="centrado">
+                            {% if item.correcto %}
+                            <span class="valor-normal">✓ Correcto</span>
+                            {% else %}
+                            <span class="valor-critico-alto">✗ Discrepancia</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Post-operatorio Inmediato -->
+    <div class="cir-post-operatorio-box page-break-avoid">
+        <div class="cir-post-titulo">Post-operatorio Inmediato</div>
+        <div class="info-grid" style="font-size: {{tipografia.tamano_pequeno}}pt;">
+            <div class="info-item">
+                <span class="info-label">Estado al despertar</span>
+                <span class="info-valor">{{datos.postoperatorio.estado_despertar | default_if_empty('—')}}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">T° post-cirugía</span>
+                <span class="info-valor">{{datos.postoperatorio.temperatura | default_if_empty('—')}} °C</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">FC post-cirugía</span>
+                <span class="info-valor">{{datos.postoperatorio.fc | default_if_empty('—')}} lpm</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Dolor (0-4)</span>
+                <span class="info-valor">{{datos.postoperatorio.escala_dolor | default_if_empty('—')}}</span>
+            </div>
+        </div>
+        {% if datos.postoperatorio.observaciones %}
+        <div style="margin-top: 4pt; font-size: {{tipografia.tamano_pequeno}}pt; color: {{colores.texto_secundario}};">
+            {{datos.postoperatorio.observaciones}}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Indicaciones Post-operatorias -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Indicaciones Post-operatorias</div>
+        <div class="seccion-contenido">
+            {% if datos.indicaciones.medicamentos %}
+            <div style="margin-bottom: 6pt;">
+                <div class="hc-campo-label" style="margin-bottom: 3pt;">Medicamentos</div>
+                {% for med in datos.indicaciones.medicamentos %}
+                <div class="hc-tratamiento-item">
+                    <div class="hc-medicamento-nombre">{{med.nombre | default_if_empty('—')}}</div>
+                    <div class="hc-medicamento-dosis">
+                        {{med.dosis | default_if_empty('')}} — {{med.via | default_if_empty('')}} — {{med.frecuencia | default_if_empty('')}} — {{med.duracion | default_if_empty('')}}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if datos.indicaciones.cuidados %}
+            <div>
+                <div class="hc-campo-label" style="margin-bottom: 3pt;">Cuidados Generales</div>
+                <div class="hc-campo-texto">{{datos.indicaciones.cuidados}}</div>
+            </div>
+            {% endif %}
+            {% if datos.indicaciones.revision %}
+            <div class="info-grid" style="margin-top: 4pt;">
+                <div class="info-item">
+                    <span class="info-label">Próxima revisión</span>
+                    <span class="info-valor destacado">{{datos.indicaciones.fecha_revision | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Retiro de puntos</span>
+                    <span class="info-valor">{{datos.indicaciones.fecha_retiro_puntos | default_if_empty('—')}}</span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Observaciones -->
+    {% if datos.observaciones %}
+    <div class="observaciones page-break-avoid" style="margin-top: 8pt;">
+        <div class="obs-titulo">Observaciones Adicionales</div>
+        <div class="obs-texto">{{datos.observaciones}}</div>
+    </div>
+    {% endif %}
+
+    <!-- Firma -->
+    <div class="firma-seccion page-break-avoid" style="margin-top: 25pt;">
+        <div class="firma-bloque">
+            <div class="firma-linea">
+                {% if lab.firma_b64 %}
+                <img src="{{lab.firma_b64}}" alt="Firma">
+                {% endif %}
+            </div>
+            <div class="firma-nombre">{{datos.equipo.cirujano | default_if_empty(lab.director_nombre)}}</div>
+            <div class="firma-cargo">Cirujano — {{lab.director_titulo}}</div>
+            <div class="firma-registro">{{lab.director_registro}}</div>
+        </div>
+        {% if lab.sello_b64 %}
+        <div class="sello-bloque">
+            <img src="{{lab.sello_b64}}" alt="Sello">
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Verificación -->
+    {% if config.mostrar_codigo_verificacion %}
+    <div class="verificacion-seccion page-break-avoid">
+        <div class="verificacion-texto">CÓDIGO DE VERIFICACIÓN</div>
+        <div class="verificacion-codigo">{{metadatos.codigo_verificacion}}</div>
+        <div class="verificacion-texto">Verifique en {{lab.web}} o al {{lab.telefono_principal}}</div>
+    </div>
+    {% endif %}
+
+    <!-- Footer fijo -->
+    <div class="footer-fijo">
+        <div class="footer-linea-superior"></div>
+        <div class="footer-contenido">
+            <div class="footer-izquierda">
+                <span class="footer-lab">{{lab.nombre}}</span>
+                <span class="footer-separador">|</span>
+                <span class="footer-datos">{{lab.nit}} · {{lab.direccion_completa}}</span>
+            </div>
+            <div class="footer-centro">
+                <span class="footer-contacto">{{lab.telefono_principal}} · {{lab.email_principal}}</span>
+            </div>
+            <div class="footer-derecha">
+                {% if config.mostrar_paginacion %}
+                <span class="footer-pagina">Pág. <span class="page"></span> de <span class="pages"></span></span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="footer-disclaimer">
+            Documento quirúrgico de carácter confidencial. Propiedad de {{lab.nombre_comercial}}.
+            Código: <strong>{{metadatos.codigo_verificacion}}</strong>
+        </div>
+    </div>
+
+</body>
+</html>

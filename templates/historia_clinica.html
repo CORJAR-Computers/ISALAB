@@ -1,0 +1,618 @@
+<!-- templates/historia_clinica.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Historia Clínica - {{lab.nombre}}</title>
+    <style>
+        {% include 'styles/base.css' %}
+    </style>
+    <style>
+        @page {
+            size: {{config.tipo_papel}};
+            margin: {{margenes.superior}}mm {{margenes.derecho}}mm {{margenes.inferior}}mm {{margenes.izquierdo}}mm;
+            @bottom-center {
+                content: element(footer);
+            }
+        }
+        
+        .hc-encabezado-paciente {
+            background: linear-gradient(135deg, {{colores.primario_claro}} 0%, {{colores.fondo}} 100%);
+            border: 1pt solid {{colores.primario}};
+            border-radius: 4pt;
+            padding: 10pt;
+            margin-bottom: 10pt;
+            display: flex;
+            gap: 15pt;
+            align-items: center;
+        }
+        
+        .hc-paciente-nombre {
+            font-size: 14pt;
+            font-weight: 700;
+            color: {{colores.primario_oscuro}};
+        }
+        
+        .hc-paciente-especie {
+            font-size: 10pt;
+            color: {{colores.texto_secundario}};
+            margin-top: 2pt;
+        }
+        
+        .hc-paciente-stats {
+            display: flex;
+            gap: 12pt;
+            margin-left: auto;
+        }
+        
+        .hc-stat {
+            text-align: center;
+            padding: 4pt 8pt;
+            background-color: white;
+            border-radius: 3pt;
+            border: 0.5pt solid {{colores.borde_claro}};
+        }
+        
+        .hc-stat-valor {
+            font-size: 11pt;
+            font-weight: 700;
+            color: {{colores.primario}};
+        }
+        
+        .hc-stat-label {
+            font-size: {{tipografia.tamano_mini}}pt;
+            color: {{colores.texto_claro}};
+            text-transform: uppercase;
+        }
+        
+        .hc-seccion {
+            margin-bottom: 8pt;
+            page-break-inside: avoid;
+        }
+        
+        .hc-seccion-titulo {
+            display: flex;
+            align-items: center;
+            gap: 6pt;
+            margin-bottom: 4pt;
+            padding-bottom: 3pt;
+            border-bottom: 1pt solid {{colores.borde_claro}};
+        }
+        
+        .hc-seccion-icono {
+            width: 20pt;
+            height: 20pt;
+            background-color: {{colores.primario}};
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10pt;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        
+        .hc-seccion-titulo-texto {
+            font-size: {{tipografia.tamano_subtitulo}}pt;
+            font-weight: 700;
+            color: {{colores.primario_oscuro}};
+            text-transform: uppercase;
+        }
+        
+        .hc-campo-texto {
+            font-size: {{tipografia.tamano_base}}pt;
+            color: {{colores.texto_principal}};
+            line-height: 1.5;
+            padding: 4pt 0;
+            min-height: 25pt;
+            border-bottom: 0.5pt dotted {{colores.borde_claro}};
+        }
+        
+        .hc-campo-label {
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            font-weight: 600;
+            color: {{colores.texto_secundario}};
+            text-transform: uppercase;
+        }
+        
+        .hc-signos-vitales-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6pt;
+        }
+        
+        .hc-signo-vital {
+            text-align: center;
+            padding: 5pt;
+            background-color: {{colores.fondo_alternado}};
+            border-radius: 3pt;
+            border: 0.5pt solid {{colores.borde_claro}};
+        }
+        
+        .hc-signo-vital .sv-valor {
+            font-size: 12pt;
+            font-weight: 700;
+            color: {{colores.primario}};
+        }
+        
+        .hc-signo-vital .sv-unidad {
+            font-size: {{tipografia.tamano_mini}}pt;
+            color: {{colores.texto_claro}};
+        }
+        
+        .hc-signo-vital .sv-nombre {
+            font-size: {{tipografia.tamano_mini}}pt;
+            color: {{colores.texto_secundario}};
+            text-transform: uppercase;
+            margin-top: 1pt;
+        }
+        
+        .hc-diagnostico-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 4pt 0;
+            border-bottom: 0.5pt solid {{colores.borde_claro}};
+        }
+        
+        .hc-diagnostico-numero {
+            width: 22pt;
+            height: 22pt;
+            background-color: {{colores.primario}};
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            font-weight: bold;
+            flex-shrink: 0;
+            margin-right: 8pt;
+        }
+        
+        .hc-diagnostico-contenido {
+            flex: 1;
+        }
+        
+        .hc-diagnostico-nombre {
+            font-weight: 600;
+            color: {{colores.texto_principal}};
+        }
+        
+        .hc-diagnostico-cie10 {
+            font-size: {{tipografia.tamano_mini}}pt;
+            color: {{colores.texto_claro}};
+            font-family: {{tipografia.familia_monospace}};
+        }
+        
+        .hc-diagnostico-tipo {
+            font-size: {{tipografia.tamano_mini}}pt;
+            padding: 1pt 5pt;
+            border-radius: 2pt;
+            font-weight: 600;
+        }
+        
+        .hc-diagnostico-tipo.presuntivo {
+            background-color: #FFF3CD;
+            color: #856404;
+        }
+        
+        .hc-diagnostico-tipo.definitivo {
+            background-color: {{colores.secundario_claro}};
+            color: {{colores.secundario_oscuro}};
+        }
+        
+        .hc-tratamiento-item {
+            padding: 4pt 6pt;
+            margin-bottom: 4pt;
+            background-color: {{colores.fondo_alternado}};
+            border-radius: 2pt;
+            border-left: 3pt solid {{colores.secundario}};
+        }
+        
+        .hc-medicamento-nombre {
+            font-weight: 700;
+            color: {{colores.primario_oscuro}};
+        }
+        
+        .hc-medicamento-dosis {
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            color: {{colores.texto_secundario}};
+        }
+        
+        .hc-timeline-consulta {
+            position: relative;
+            padding-left: 20pt;
+        }
+        
+        .hc-timeline-consulta::before {
+            content: "";
+            position: absolute;
+            left: 6pt;
+            top: 0;
+            bottom: 0;
+            width: 2pt;
+            background-color: {{colores.borde}};
+        }
+        
+        .hc-consulta-item {
+            position: relative;
+            margin-bottom: 8pt;
+            padding: 6pt 8pt;
+            background-color: {{colores.fondo_alternado}};
+            border-radius: 3pt;
+        }
+        
+        .hc-consulta-item::before {
+            content: "";
+            position: absolute;
+            left: -17pt;
+            top: 8pt;
+            width: 10pt;
+            height: 10pt;
+            background-color: {{colores.primario}};
+            border-radius: 50%;
+            border: 2pt solid white;
+        }
+        
+        .hc-consulta-fecha {
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            font-weight: 700;
+            color: {{colores.primario}};
+        }
+        
+        .hc-consulta-motivo {
+            font-size: {{tipografia.tamano_base}}pt;
+            color: {{colores.texto_principal}};
+            margin-top: 2pt;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Encabezado -->
+    <div class="encabezado page-break-avoid">
+        <div class="encabezado-logo">
+            {% if lab.logo_b64 %}
+            <img src="{{lab.logo_b64}}" alt="Logo {{lab.nombre}}">
+            {% endif %}
+        </div>
+        <div class="encabezado-info">
+            <div class="lab-nombre">{{lab.nombre}}</div>
+            <div class="lab-nombre-comercial">{{lab.nombre_comercial}}</div>
+        </div>
+        <div class="encabezado-datos">
+            <div class="dato-item">NIT: {{lab.nit}}</div>
+            <div class="dato-item">{{lab.direccion_completa}}</div>
+            <div class="dato-item">Tel: {{lab.telefono_principal}}</div>
+        </div>
+    </div>
+
+    <div class="reporte-titulo page-break-avoid">
+        <h1>Historia Clínica Veterinaria</h1>
+        <div class="subtitulo">Registro Clínico Integral del Paciente</div>
+    </div>
+
+    <!-- Info del reporte -->
+    <div class="info-grid info-grid-4col page-break-avoid" style="margin-bottom: 8pt; font-size: {{tipografia.tamano_pequeno}}pt;">
+        <div class="info-item">
+            <span class="info-label">No. Historia</span>
+            <span class="info-valor destacado">{{datos.numero_historia | default_if_empty('—')}}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Fecha Apertura</span>
+            <span class="info-valor">{{datos.fecha_apertura | default_if_empty('—')}}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">No. Consulta</span>
+            <span class="info-valor">{{datos.numero_consulta | default_if_empty('—')}}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Fecha Consulta</span>
+            <span class="info-valor">{{metadatos.fecha_generacion}}</span>
+        </div>
+    </div>
+
+    <!-- Resumen del Paciente -->
+    <div class="hc-encabezado-paciente page-break-avoid">
+        {% if datos.paciente.foto_b64 %}
+        <img src="{{datos.paciente.foto_b64}}" alt="Foto" style="width: 50pt; height: 50pt; border-radius: 50%; object-fit: cover; border: 2pt solid {{colores.primario_claro}};">
+        {% endif %}
+        <div>
+            <div class="hc-paciente-nombre">{{datos.paciente.nombre | default_if_empty('—')}}</div>
+            <div class="hc-paciente-especie">{{datos.paciente.especie | default_if_empty('')}} — {{datos.paciente.raza | default_if_empty('')}} — {{datos.paciente.sexo | default_if_empty('')}}</div>
+        </div>
+        <div class="hc-paciente-stats">
+            <div class="hc-stat">
+                <div class="hc-stat-valor">{{datos.paciente.edad_texto | default_if_empty('—')}}</div>
+                <div class="hc-stat-label">Edad</div>
+            </div>
+            <div class="hc-stat">
+                <div class="hc-stat-valor">{{datos.paciente.peso | default_if_empty('—')}}</div>
+                <div class="hc-stat-label">{{datos.paciente.peso_unidad | default_if_empty('kg')}}</div>
+            </div>
+            <div class="hc-stat">
+                <div class="hc-stat-valor">{{datos.total_consultas | default('1')}}</div>
+                <div class="hc-stat-label">Consultas</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Propietario -->
+    <div class="seccion page-break-avoid">
+        <div class="seccion-titulo">Propietario</div>
+        <div class="seccion-contenido">
+            <div class="info-grid info-grid-4col">
+                <div class="info-item">
+                    <span class="info-label">Nombre</span>
+                    <span class="info-valor">{{cliente.nombre_completo | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Documento</span>
+                    <span class="info-valor">{{cliente.numero_documento | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Teléfono</span>
+                    <span class="info-valor">{{cliente.telefono | default_if_empty('—')}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Dirección</span>
+                    <span class="info-valor">{{cliente.direccion | default_if_empty('—')}}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Motivo de Consulta -->
+    <div class="hc-seccion page-break-avoid">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">1</div>
+            <div class="hc-seccion-titulo-texto">Motivo de Consulta</div>
+        </div>
+        <div class="hc-campo-texto">{{datos.motivo_consulta | default_if_empty('No registrado')}}</div>
+    </div>
+
+    <!-- Anamnesis -->
+    <div class="hc-seccion page-break-avoid">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">2</div>
+            <div class="hc-seccion-titulo-texto">Anamnesis / Interrogatorio</div>
+        </div>
+        <div class="hc-campo-texto">{{datos.anamnesis | default_if_empty('No registrada')}}</div>
+    </div>
+
+    <!-- Signos Vitales -->
+    <div class="hc-seccion page-break-avoid">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">3</div>
+            <div class="hc-seccion-titulo-texto">Signos Vitales</div>
+        </div>
+        <div class="hc-signos-vitales-grid">
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.temperatura | default_if_empty('—')}}</div>
+                <div class="sv-unidad">°C</div>
+                <div class="sv-nombre">Temperatura</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.fc | default_if_empty('—')}}</div>
+                <div class="sv-unidad">lpm</div>
+                <div class="sv-nombre">Frec. Cardíaca</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.fr | default_if_empty('—')}}</div>
+                <div class="sv-unidad">rpm</div>
+                <div class="sv-nombre">Frec. Respiratoria</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.pulso | default_if_empty('—')}}</div>
+                <div class="sv-unidad">lpm</div>
+                <div class="sv-nombre">Pulso</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.peso | default_if_empty('—')}}</div>
+                <div class="sv-unidad">{{datos.paciente.peso_unidad | default_if_empty('kg')}}</div>
+                <div class="sv-nombre">Peso</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.tllc | default_if_empty('—')}}</div>
+                <div class="sv-unidad">seg</div>
+                <div class="sv-nombre">TLLC</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.mucosas | default_if_empty('—')}}</div>
+                <div class="sv-unidad">&nbsp;</div>
+                <div class="sv-nombre">Mucosas</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.hidratacion | default_if_empty('—')}}</div>
+                <div class="sv-unidad">%</div>
+                <div class="sv-nombre">Hidratación</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.glicemia | default_if_empty('—')}}</div>
+                <div class="sv-unidad">mg/dL</div>
+                <div class="sv-nombre">Glicemia</div>
+            </div>
+            <div class="hc-signo-vital">
+                <div class="sv-valor">{{datos.signos_vitales.spo2 | default_if_empty('—')}}</div>
+                <div class="sv-unidad">%</div>
+                <div class="sv-nombre">SpO₂</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Examen Físico -->
+    <div class="hc-seccion page-break-avoid">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">4</div>
+            <div class="hc-seccion-titulo-texto">Examen Físico</div>
+        </div>
+        <div class="hc-campo-texto">{{datos.examen_fisico | default_if_empty('No registrado')}}</div>
+    </div>
+
+    <!-- Diagnósticos -->
+    <div class="hc-seccion page-break-avoid">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">5</div>
+            <div class="hc-seccion-titulo-texto">Diagnóstico(s)</div>
+        </div>
+        {% for dx in datos.diagnosticos %}
+        <div class="hc-diagnostico-item">
+            <div class="hc-diagnostico-numero">{{loop.index}}</div>
+            <div class="hc-diagnostico-contenido">
+                <div style="display: flex; align-items: center; gap: 6pt;">
+                    <span class="hc-diagnostico-nombre">{{dx.nombre | default_if_empty('—')}}</span>
+                    <span class="hc-diagnostico-tipo {{dx.tipo | lower | default('presuntivo')}}">{{dx.tipo | default('Presuntivo')}}</span>
+                </div>
+                {% if dx.cie10 %}
+                <div class="hc-diagnostico-cie10">CIE-10: {{dx.cie10}}</div>
+                {% endif %}
+                {% if dx.observaciones %}
+                <div class="texto-pequeno" style="color: {{colores.texto_secundario}}; margin-top: 2pt;">{{dx.observaciones}}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Plan Terapéutico -->
+    <div class="hc-seccion page-break-avoid">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">6</div>
+            <div class="hc-seccion-titulo-texto">Plan Terapéutico</div>
+        </div>
+        
+        {% if datos.tratamiento.medicamentos %}
+        <div style="margin-bottom: 6pt;">
+            <div class="hc-campo-label" style="margin-bottom: 3pt;">Medicamentos</div>
+            {% for med in datos.tratamiento.medicamentos %}
+            <div class="hc-tratamiento-item">
+                <div class="hc-medicamento-nombre">{{med.nombre | default_if_empty('—')}}</div>
+                <div class="hc-medicamento-dosis">
+                    {{med.dosis | default_if_empty('')}} {{med.via | default_if_empty('')}} — {{med.frecuencia | default_if_empty('')}} — {{med.duracion | default_if_empty('')}}
+                </div>
+                {% if med.indicacion %}
+                <div class="texto-mini" style="color: {{colores.texto_claro}};">Ind: {{med.indicacion}}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        {% if datos.tratamiento.procedimientos %}
+        <div style="margin-bottom: 6pt;">
+            <div class="hc-campo-label" style="margin-bottom: 3pt;">Procedimientos</div>
+            {% for proc in datos.tratamiento.procedimientos %}
+            <div class="hc-tratamiento-item" style="border-left-color: {{colores.info}};">
+                <div class="hc-medicamento-nombre">{{proc.nombre | default_if_empty('—')}}</div>
+                {% if proc.detalle %}
+                <div class="hc-medicamento-dosis">{{proc.detalle}}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        {% if datos.tratamiento.indicaciones %}
+        <div>
+            <div class="hc-campo-label" style="margin-bottom: 3pt;">Indicaciones Generales</div>
+            <div class="hc-campo-texto">{{datos.tratamiento.indicaciones}}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Pronóstico -->
+    <div class="hc-seccion page-break-avoid">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">7</div>
+            <div class="hc-seccion-titulo-texto">Pronóstico</div>
+        </div>
+        <div class="hc-campo-texto">
+            <strong>{{datos.pronostico.tipo | default_if_empty('—')}}</strong>
+            {% if datos.pronostico.observaciones %}
+            — {{datos.pronostico.observaciones}}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Controles -->
+    {% if datos.controles %}
+    <div class="hc-seccion">
+        <div class="hc-seccion-titulo">
+            <div class="hc-seccion-icono">8</div>
+            <div class="hc-seccion-titulo-texto">Controles Programados</div>
+        </div>
+        <table class="tabla">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Motivo</th>
+                    <th>Observaciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ctrl in datos.controles %}
+                <tr>
+                    <td class="centrado">{{ctrl.fecha | default_if_empty('—')}}</td>
+                    <td>{{ctrl.motivo | default_if_empty('—')}}</td>
+                    <td class="texto-pequeno">{{ctrl.observaciones | default_if_empty('—')}}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Firma -->
+    <div class="firma-seccion page-break-avoid" style="margin-top: 20pt;">
+        <div class="firma-bloque">
+            <div class="firma-linea">
+                {% if lab.firma_b64 %}
+                <img src="{{lab.firma_b64}}" alt="Firma">
+                {% endif %}
+            </div>
+            <div class="firma-nombre">{{datos.veterinario_nombre | default_if_empty(lab.director_nombre)}}</div>
+            <div class="firma-cargo">{{lab.director_titulo}}</div>
+            <div class="firma-registro">{{datos.veterinario_registro | default_if_empty(lab.director_registro)}}</div>
+        </div>
+        {% if lab.sello_b64 %}
+        <div class="sello-bloque">
+            <img src="{{lab.sello_b64}}" alt="Sello">
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Verificación -->
+    {% if config.mostrar_codigo_verificacion %}
+    <div class="verificacion-seccion page-break-avoid">
+        <div class="verificacion-codigo">{{metadatos.codigo_verificacion}}</div>
+        <div class="verificacion-texto">Verifique en {{lab.web}} — {{lab.nombre}}</div>
+    </div>
+    {% endif %}
+
+    <!-- Footer fijo -->
+    <div class="footer-fijo">
+        <div class="footer-linea-superior"></div>
+        <div class="footer-contenido">
+            <div class="footer-izquierda">
+                <span class="footer-lab">{{lab.nombre}}</span>
+                <span class="footer-separador">|</span>
+                <span class="footer-datos">{{lab.nit}}</span>
+            </div>
+            <div class="footer-centro">
+                <span class="footer-contacto">{{lab.telefono_principal}} · {{lab.email_principal}}</span>
+            </div>
+            <div class="footer-derecha">
+                {% if config.mostrar_paginacion %}
+                <span class="footer-pagina">Pág. <span class="page"></span> de <span class="pages"></span></span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="footer-disclaimer">
+            Documento de carácter confidencial. Propiedad de {{lab.nombre_comercial}}. 
+            Código: <strong>{{metadatos.codigo_verificacion}}</strong>
+        </div>
+    </div>
+
+</body>
+</html>

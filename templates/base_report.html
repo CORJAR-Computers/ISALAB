@@ -1,0 +1,118 @@
+<!-- templates/base_report.html -->
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{{metadatos.titulo | default('Reporte IsaLab')}} - {{lab.nombre}}</title>
+
+    <!-- CSS Base con variables dinámicas de IsaLab -->
+    <style>
+        {% include 'styles/base.css' %}
+    </style>
+
+    <!-- CSS adicional por plantilla -->
+    {% block css_adicional %}{% endblock %}
+
+    <!-- Configuración de página EXCLUSIVA para WeasyPrint -->
+    <style>
+        @page {
+            size: {{config.tipo_papel | default('a4')}};
+
+            /* Margen superior ampliado para el header running */
+            margin: 35mm {{margenes.derecho | default(15)}}mm {{margenes.inferior | default(15)}}mm {{margenes.izquierdo | default(15)}}mm;
+
+            /* Encabezado fijo en todas las páginas */
+            @top-center {
+                content: element(header-running);
+            }
+
+            /* Pie de página fijo */
+            @bottom-center {
+                content: element(footer);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ============================================================= -->
+    <!-- HEADER RUNNING (se repite automáticamente en cada página)    -->
+    <!-- ============================================================= -->
+    <div class="header-running">
+        <div class="encabezado-logos">
+            <div class="logo-izquierdo">
+                {% if logo_isalab %}
+                <img src="{{logo_isalab}}" alt="Logo IsaLab" class="logo-img">
+                {% endif %}
+            </div>
+            <div class="logo-derecho">
+                {% if logo_empresa %}
+                <img src="{{logo_empresa}}" alt="Logo Empresa" class="logo-img-empresa">
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <!-- MARCAS DE AGUA (Opcionales)                                  -->
+    <!-- ============================================================= -->
+    {% if config.mostrar_marca_agua | default(false) %}
+    <div class="marca-agua">
+        {% if logo_isalab %}
+        <img src="{{logo_isalab}}" alt="Watermark"
+            style="width: 120mm; display: block; margin: 0 auto; opacity: 0.5;">
+        {% else %}
+        {{config.marca_agua_texto | default('ISALAB')}}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if metadatos.es_borrador | default(false) %}
+    <div class="marca-borrador">BORRADOR - NO VÁLIDO</div>
+    {% endif %}
+
+    {% if metadatos.es_copia | default(false) %}
+    <div class="marca-copia">COPIA</div>
+    {% endif %}
+
+    <!-- ============================================================= -->
+    <!-- CONTENIDO PRINCIPAL (inyectado por cada plantilla hija)      -->
+    <!-- ============================================================= -->
+    <main class="reporte-contenido">
+        {% block cuerpo_reporte %}{% endblock %}
+    </main>
+
+    <!-- ============================================================= -->
+    <!-- PIE DE PÁGINA FIJO (aparece al final de cada página)         -->
+    <!-- ============================================================= -->
+    <div class="footer-fijo">
+        <div class="footer-linea-superior"></div>
+        <div class="footer-contenido">
+            <div class="footer-izquierda">
+                <span class="footer-lab">{{lab.nombre}}</span>
+                <span class="footer-separador">|</span>
+                <span class="footer-datos">{{lab.nit | default('')}} · {{lab.direccion_completa | default('')}}</span>
+            </div>
+            <div class="footer-centro">
+                <span class="footer-contacto">
+                    {{lab.telefono_principal | default('')}} · {{lab.email_principal | default('')}} · {{lab.web |
+                    default('')}}
+                </span>
+            </div>
+            <div class="footer-derecha">
+                <span class="footer-pagina">Pág. <span class="page"></span> de <span class="pages"></span></span>
+            </div>
+        </div>
+        <div class="footer-disclaimer">
+            Documento generado por {{lab.nombre_comercial | default(lab.nombre)}}.
+            {% if metadatos.codigo_verificacion %}
+            Código verificación: <strong>{{metadatos.codigo_verificacion}}</strong>
+            {% endif %}
+        </div>
+    </div>
+
+</body>
+
+</html>

@@ -1,0 +1,76 @@
+('C:\\ISALAB\\build\\IsaLab\\IsaLab.exe',
+ False,
+ False,
+ True,
+ ['C:\\ISALAB\\assets\\icono.ico'],
+ None,
+ False,
+ False,
+ b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<assembly xmlns='
+ b'"urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">\n  <!-- Identid'
+ b'ad de la aplicaci\xc3\xb3n: necesaria para que Windows la reconozca\n      '
+ b' como app independiente y muestre el icono correcto en la barra de tareas. -'
+ b'->\n  <assemblyIdentity version="1.0.0.0" processorArchitecture="amd64" n'
+ b'ame="IsaLab.CentroDiagnosticoVeterinario" type="win32"/>\n  <description>'
+ b'IsaLab - Centro Diagn\xc3\xb3stico Veterinario</description>\n  <!-- Compat'
+ b'ibilidad con versiones de Windows -->\n  <compatibility xmlns="urn:schema'
+ b's-microsoft-com:compatibility.v1">\n    <application>\n      <!-- Windows '
+ b'10 / 11 -->\n      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a'
+ b'}"/>\n      <!-- Windows 8.1 -->\n      <supportedOS Id="{1f676c76-80e1-42'
+ b'39-95bb-83d0f6d0da78}"/>\n      <!-- Windows 8 -->\n      <supportedOS Id='
+ b'"{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>\n      <!-- Windows 7 -->\n    '
+ b'  <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>\n    </appli'
+ b'cation>\n  </compatibility>\n  <!-- Conciencia de DPI: evita que Windows e'
+ b'scale la app y distorsione el icono -->\n  <application xmlns="urn:schema'
+ b's-microsoft-com:asm.v3">\n    <windowsSettings>\n      <dpiAware xmlns="ht'
+ b'tp://schemas.microsoft.com/SMI/2005/WindowsSettings">\n        true/PM\n  '
+ b'    </dpiAware>\n      <dpiAwareness xmlns="http://schemas.microsoft.com/'
+ b'SMI/2016/WindowsSettings">\n        PerMonitorV2\n      </dpiAwareness>\n  '
+ b'  </windowsSettings>\n  </application>\n  <!-- Nivel de ejecuci\xc3\xb3n: no'
+ b' requiere elevaci\xc3\xb3n -->\n  <trustInfo xmlns="urn:schemas-microsoft-c'
+ b'om:asm.v2">\n    <security>\n      <requestedPrivileges>\n        <requeste'
+ b'dExecutionLevel level="asInvoker" uiAccess="false"/>\n      </requestedPr'
+ b'ivileges>\n    </security>\n  </trustInfo>\n  <dependency>\n    <dependentAs'
+ b'sembly>\n      <assemblyIdentity type="win32" name="Microsoft.Windows.Com'
+ b'mon-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="65'
+ b'95b64144ccf1df" language="*"/>\n    </dependentAssembly>\n  </dependency>\n'
+ b'</assembly>',
+ True,
+ False,
+ None,
+ None,
+ None,
+ 'C:\\ISALAB\\build\\IsaLab\\IsaLab.pkg',
+ [('pyi-contents-directory _internal', '', 'OPTION'),
+  ('PYZ-00.pyz', 'C:\\ISALAB\\build\\IsaLab\\PYZ-00.pyz', 'PYZ'),
+  ('struct', 'C:\\ISALAB\\build\\IsaLab\\localpycs\\struct.pyc', 'PYMODULE'),
+  ('pyimod01_archive',
+   'C:\\ISALAB\\build\\IsaLab\\localpycs\\pyimod01_archive.pyc',
+   'PYMODULE'),
+  ('pyimod02_importers',
+   'C:\\ISALAB\\build\\IsaLab\\localpycs\\pyimod02_importers.pyc',
+   'PYMODULE'),
+  ('pyimod03_ctypes',
+   'C:\\ISALAB\\build\\IsaLab\\localpycs\\pyimod03_ctypes.pyc',
+   'PYMODULE'),
+  ('pyimod04_pywin32',
+   'C:\\ISALAB\\build\\IsaLab\\localpycs\\pyimod04_pywin32.pyc',
+   'PYMODULE'),
+  ('pyiboot01_bootstrap',
+   'C:\\Users\\AlexisC\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\loader\\pyiboot01_bootstrap.py',
+   'PYSOURCE'),
+  ('pyi_rth_inspect',
+   'C:\\Users\\AlexisC\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks\\pyi_rth_inspect.py',
+   'PYSOURCE'),
+  ('pyi_rth_pyside6',
+   'C:\\Users\\AlexisC\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks\\pyi_rth_pyside6.py',
+   'PYSOURCE'),
+  ('main', 'C:\\ISALAB\\main.py', 'PYSOURCE')],
+ [],
+ False,
+ False,
+ 1778728591,
+ [('runw.exe',
+   'C:\\Users\\AlexisC\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\runw.exe',
+   'EXECUTABLE')],
+ 'C:\\Users\\AlexisC\\AppData\\Local\\Programs\\Python\\Python314\\python314.dll')

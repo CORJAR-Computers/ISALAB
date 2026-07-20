@@ -1,0 +1,365 @@
+<!-- templates/vacunacion.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Certificado de Vacunación - {{lab.nombre}}</title>
+    <style>
+        {% include 'styles/base.css' %}
+    </style>
+    <style>
+        @page {
+            size: {{config.tipo_papel}};
+            margin: {{margenes.superior}}mm {{margenes.derecho}}mm {{margenes.inferior}}mm {{margenes.izquierdo}}mm;
+            @bottom-center {
+                content: element(footer);
+            }
+        }
+        
+        .certificado-borde {
+            border: 2pt solid {{colores.primario}};
+            padding: 10pt;
+            margin: 5pt 0;
+            position: relative;
+        }
+        
+        .certificado-borde::before {
+            content: "";
+            position: absolute;
+            top: 3pt;
+            left: 3pt;
+            right: 3pt;
+            bottom: 3pt;
+            border: 0.5pt solid {{colores.primario_claro}};
+            pointer-events: none;
+        }
+        
+        .certificado-titulo {
+            text-align: center;
+            padding: 8pt 0;
+            border-bottom: 2pt solid {{colores.secundario}};
+            margin-bottom: 10pt;
+        }
+        
+        .certificado-titulo h1 {
+            font-size: 16pt;
+            color: {{colores.primario_oscuro}};
+            text-transform: uppercase;
+            letter-spacing: 3pt;
+        }
+        
+        .certificado-titulo h2 {
+            font-size: 11pt;
+            color: {{colores.secundario_oscuro}};
+            margin-top: 2pt;
+            font-weight: normal;
+        }
+        
+        .vacuna-tarjeta {
+            background-color: {{colores.fondo_alternado}};
+            border-left: 4pt solid {{colores.secundario}};
+            padding: 8pt 10pt;
+            margin-bottom: 6pt;
+            page-break-inside: avoid;
+        }
+        
+        .vacuna-tarjeta .vacuna-nombre {
+            font-size: {{tipografia.tamano_subtitulo}}pt;
+            font-weight: 700;
+            color: {{colores.primario_oscuro}};
+        }
+        
+        .vacuna-tarjeta .vacuna-lote {
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            color: {{colores.texto_secundario}};
+            font-family: {{tipografia.familia_monospace}};
+        }
+        
+        .dosis-timeline {
+            margin-top: 4pt;
+        }
+        
+        .dosis-item {
+            display: flex;
+            align-items: center;
+            padding: 3pt 0;
+            border-bottom: 0.5pt dotted {{colores.borde_claro}};
+        }
+        
+        .dosis-item:last-child {
+            border-bottom: none;
+        }
+        
+        .dosis-numero {
+            width: 60pt;
+            font-weight: 700;
+            color: {{colores.secundario_oscuro}};
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            text-transform: uppercase;
+        }
+        
+        .dosis-fecha {
+            width: 80pt;
+            font-size: {{tipografia.tamano_pequeno}}pt;
+        }
+        
+        .dosis-proxima {
+            width: 80pt;
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            color: {{colores.info}};
+        }
+        
+        .dosis-veterinario {
+            flex: 1;
+            font-size: {{tipografia.tamano_pequeno}}pt;
+        }
+        
+        .proxima-vacuna-box {
+            background-color: {{colores.secundario_claro}};
+            border: 1pt solid {{colores.secundario}};
+            border-radius: 3pt;
+            padding: 6pt 10pt;
+            margin-top: 10pt;
+            text-align: center;
+        }
+        
+        .proxima-vacuna-box .prox-titulo {
+            font-weight: 700;
+            color: {{colores.secundario_oscuro}};
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            text-transform: uppercase;
+        }
+        
+        .proxima-vacuna-box .prox-fecha {
+            font-size: 14pt;
+            font-weight: 700;
+            color: {{colores.primario}};
+            margin-top: 2pt;
+        }
+        
+        .proxima-vacuna-box .prox-detalle {
+            font-size: {{tipografia.tamano_pequeno}}pt;
+            color: {{colores.texto_secundario}};
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Encabezado -->
+    <div class="encabezado page-break-avoid">
+        <div class="encabezado-logo">
+            {% if lab.logo_b64 %}
+            <img src="{{lab.logo_b64}}" alt="Logo {{lab.nombre}}">
+            {% endif %}
+        </div>
+        <div class="encabezado-info">
+            <div class="lab-nombre">{{lab.nombre}}</div>
+            <div class="lab-nombre-comercial">{{lab.nombre_comercial}}</div>
+            <div class="lab-slogan">{{lab.slogan}}</div>
+        </div>
+        <div class="encabezado-datos">
+            <div class="dato-item">NIT: {{lab.nit}}</div>
+            <div class="dato-item">RS: {{lab.registro_sanitario}}</div>
+            <div class="dato-item">{{lab.direccion_completa}}</div>
+            <div class="dato-item">Tel: {{lab.telefono_principal}}</div>
+        </div>
+    </div>
+
+    <!-- Certificado -->
+    <div class="certificado-borde">
+        <div class="certificado-titulo">
+            <h1>Certificado de Vacunación</h1>
+            <h2>Registro Oficial de Inmunización Animal</h2>
+        </div>
+
+        <!-- Número de certificado -->
+        <div class="info-grid info-grid-4col page-break-avoid" style="margin-bottom: 8pt; font-size: {{tipografia.tamano_pequeno}}pt;">
+            <div class="info-item">
+                <span class="info-label">No. Certificado</span>
+                <span class="info-valor destacado">{{metadatos.numero_reporte}}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Fecha Emisión</span>
+                <span class="info-valor">{{metadatos.fecha_generacion}}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">No. Historia</span>
+                <span class="info-valor">{{datos.numero_historia | default_if_empty('—')}}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Médico Veterinario</span>
+                <span class="info-valor">{{datos.veterinario_nombre | default_if_empty('—')}}</span>
+            </div>
+        </div>
+
+        <!-- Propietario -->
+        <div class="seccion page-break-avoid">
+            <div class="seccion-titulo">Datos del Propietario</div>
+            <div class="seccion-contenido">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Nombre</span>
+                        <span class="info-valor">{{cliente.nombre_completo | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Documento</span>
+                        <span class="info-valor">{{cliente.tipo_documento | default_if_empty('')}} {{cliente.numero_documento | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Teléfono</span>
+                        <span class="info-valor">{{cliente.telefono | default_if_empty('—')}} / {{cliente.celular | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Dirección</span>
+                        <span class="info-valor">{{cliente.direccion | default_if_empty('—')}}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Paciente -->
+        <div class="seccion page-break-avoid">
+            <div class="seccion-titulo">Datos del Paciente</div>
+            <div class="seccion-contenido">
+                <div class="info-grid info-grid-4col">
+                    <div class="info-item">
+                        <span class="info-label">Nombre</span>
+                        <span class="info-valor destacado">{{datos.paciente.nombre | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Especie</span>
+                        <span class="info-valor">{{datos.paciente.especie | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Raza</span>
+                        <span class="info-valor">{{datos.paciente.raza | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Sexo</span>
+                        <span class="info-valor">{{datos.paciente.sexo | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Fecha Nac.</span>
+                        <span class="info-valor">{{datos.paciente.fecha_nacimiento | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Edad</span>
+                        <span class="info-valor">{{datos.paciente.edad_texto | default_if_empty('—')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Peso</span>
+                        <span class="info-valor">{{datos.paciente.peso | default_if_empty('—')}} {{datos.paciente.peso_unidad | default_if_empty('kg')}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Identificación</span>
+                        <span class="info-valor">{{datos.paciente.identificacion | default_if_empty('—')}}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Esquema de Vacunación -->
+        <div class="seccion">
+            <div class="seccion-titulo">Esquema de Vacunación</div>
+            <div class="seccion-contenido">
+                {% for vacuna in datos.vacunas %}
+                <div class="vacuna-tarjeta">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="vacuna-nombre">{{vacuna.nombre}}</div>
+                            <div class="vacuna-lote">Laboratorio: {{vacuna.laboratorio | default_if_empty('—')}} | Lote: {{vacuna.lote | default_if_empty('—')}} | Fecha Vencimiento: {{vacuna.fecha_vencimiento | default_if_empty('—')}}</div>
+                        </div>
+                        <div style="text-align: right; font-size: {{tipografia.tamano_pequeno}}pt;">
+                            <div>{{vacuna.tipo | default_if_empty('—')}}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="dosis-timeline">
+                        {% for dosis in vacuna.dosis %}
+                        <div class="dosis-item">
+                            <div class="dosis-numero">{{dosis.nombre}}</div>
+                            <div class="dosis-fecha">{{dosis.fecha_aplicacion | default_if_empty('Pendiente')}}</div>
+                            <div class="dosis-proxima">{{dosis.fecha_proxima | default_if_empty('')}}</div>
+                            <div class="dosis-veterinario">{{dosis.veterinario | default_if_empty('—')}}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Próxima Vacuna -->
+        {% if datos.proxima_vacuna %}
+        <div class="proxima-vacuna-box page-break-avoid">
+            <div class="prox-titulo">Próxima Vacunación Programada</div>
+            <div class="prox-fecha">{{datos.proxima_vacuna.fecha}}</div>
+            <div class="prox-detalle">{{datos.proxima_vacuna.vacuna}} — {{datos.proxima_vacuna.dosis}}</div>
+        </div>
+        {% endif %}
+
+        <!-- Observaciones -->
+        {% if datos.observaciones %}
+        <div class="observaciones page-break-avoid" style="margin-top: 10pt;">
+            <div class="obs-titulo">Observaciones</div>
+            <div class="obs-texto">{{datos.observaciones}}</div>
+        </div>
+        {% endif %}
+
+        <!-- Firma -->
+        <div class="firma-seccion page-break-avoid" style="margin-top: 20pt;">
+            <div class="firma-bloque">
+                <div class="firma-linea">
+                    {% if lab.firma_b64 %}
+                    <img src="{{lab.firma_b64}}" alt="Firma">
+                    {% endif %}
+                </div>
+                <div class="firma-nombre">{{lab.director_nombre}}</div>
+                <div class="firma-cargo">{{lab.director_titulo}}</div>
+                <div class="firma-registro">{{lab.director_registro}}</div>
+            </div>
+            {% if lab.sello_b64 %}
+            <div class="sello-bloque">
+                <img src="{{lab.sello_b64}}" alt="Sello">
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Verificación -->
+        {% if config.mostrar_codigo_verificacion %}
+        <div class="verificacion-seccion page-break-avoid">
+            <div class="verificacion-texto">CÓDIGO DE VERIFICACIÓN</div>
+            <div class="verificacion-codigo">{{metadatos.codigo_verificacion}}</div>
+            <div class="verificacion-texto">Verifique en {{lab.web}} o al {{lab.telefono_principal}}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Footer fijo -->
+    <div class="footer-fijo">
+        <div class="footer-linea-superior"></div>
+        <div class="footer-contenido">
+            <div class="footer-izquierda">
+                <span class="footer-lab">{{lab.nombre}}</span>
+                <span class="footer-separador">|</span>
+                <span class="footer-datos">{{lab.nit}} · {{lab.direccion_completa}}</span>
+            </div>
+            <div class="footer-centro">
+                <span class="footer-contacto">{{lab.telefono_principal}} · {{lab.email_principal}}</span>
+            </div>
+            <div class="footer-derecha">
+                {% if config.mostrar_paginacion %}
+                <span class="footer-pagina">Pág. <span class="page"></span> de <span class="pages"></span></span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="footer-disclaimer">
+            Certificado de vacunación válido únicamente con firma y sello de {{lab.nombre_comercial}}.
+            {% if config.mostrar_codigo_verificacion %}
+            Verificación: <strong>{{metadatos.codigo_verificacion}}</strong>
+            {% endif %}
+        </div>
+    </div>
+
+</body>
+</html>

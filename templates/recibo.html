@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Comprobante de Pago - {{fecha_str}}{% endblock %}
+
+{% block content %}
+    <h2>Comprobante de Pago</h2>
+
+    <table class="tabla-limpia evitar-corte">
+        <tr>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Paciente</th>
+            <th>Método de Pago</th>
+        </tr>
+        <tr>
+            <td>{{datos.fecha | default(fecha_str, true)}}</td>
+            <td><strong>{{datos.cliente | default('—', true)}}</strong></td>
+            <td>{{datos.paciente | default('—', true)}}</td>
+            <td>{{datos.metodo_pago | default('—', true)}}</td>
+        </tr>
+    </table>
+
+    <h3 style="margin-top: 30px;">Conceptos Facturados</h3>
+    <table class="evitar-corte" style="width: 100%; border: 1px solid #e2e8f0;">
+        <tr style="background-color: #1E3A5F; color: white;">
+            <th style="color: white; padding: 10px;">Descripción del Servicio</th>
+            <th style="color: white; padding: 10px; text-align: right;">Importe</th>
+        </tr>
+        <tr>
+            <td style="padding: 15px; border-bottom: 2px solid #1E3A5F;">{{datos.servicio | default('Servicios Veterinarios', true)}}</td>
+            <td style="padding: 15px; border-bottom: 2px solid #1E3A5F; text-align: right; font-weight: bold; font-size: 12pt;">
+                $ {{ "{:,.2f}".format(datos.total | default(0, true)) }}
+            </td>
+        </tr>
+    </table>
+
+    {% if datos.notas %}
+    <h3 style="margin-top: 20px;">Notas</h3>
+    <p>{{datos.notas}}</p>
+    {% endif %}
+
+    <div class="firma-container evitar-corte">
+        <div class="firma-linea">
+            <div class="firma-nombre">Administración IsaLab</div>
+            <div class="firma-rol">Firma Autorizada</div>
+        </div>
+    </div>
+{% endblock %}
