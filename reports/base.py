@@ -430,8 +430,20 @@ class ReporteBase(ABC):
         return ""
 
     def _convertir_a_pdf(self, html: str) -> bytes:
-        """Convierte HTML a PDF usando WeasyPrint."""
-        documento = HTML(string=html)
+        """Convierte HTML a PDF usando WeasyPrint.
+
+        Fase 3 (issue C3): usa el ``url_fetcher`` sandboxed de
+        ``reports.generators`` para bloquear cualquier recurso externo
+        (``http(s)://``, ``ftp://``, ``data:``) y solo permitir
+        ``file://`` bajo ``BASE_DIR`` (logos, firmas, sellos, fuentes
+        locales). Previene SSRF vía plantillas PDF.
+        """
+        from reports.generators import _safe_url_fetcher
+
+        documento = HTML(
+            string=html,
+            url_fetcher=_safe_url_fetcher,
+        )
         pdf = documento.render(
             font_config=self.font_config,
             presentational_hints=True

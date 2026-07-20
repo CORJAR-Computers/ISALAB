@@ -1,7 +1,7 @@
 # services/report_formula_medica.py
 """Puente para generar fórmulas médicas."""
 
-from typing import Dict, Any
+from typing import Optional, Dict, Any
 
 from reports import (
     generar_reporte,
@@ -14,15 +14,24 @@ from reports import (
     DatosLaboratorio,
 )
 from utils.logger import setup_logger
+from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class ReporteFormulaMedicaService:
-    """Genera PDFs de fórmulas médicas."""
+    """Genera PDFs de fórmulas médicas.
 
-    def __init__(self):
+    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
+    rol ``asistente`` o superior.
+    """
+
+    def __init__(self, usuario_actual: Optional[dict] = None):
         self.lab = DatosLaboratorio()
+        self.authorizer = Authorizer(usuario_actual)
+
+    def _check_perm(self) -> None:
+        self.authorizer.require_role('asistente')
 
     # ── API pública ──────────────────────────────────────────────────────
 
@@ -30,6 +39,7 @@ class ReporteFormulaMedicaService:
         self,
         formula_data: Dict[str, Any],
     ) -> bytes:
+        self._check_perm()
         contexto = self._construir_contexto(formula_data)
         return generar_reporte("formula_medica", contexto)
 
@@ -38,6 +48,7 @@ class ReporteFormulaMedicaService:
         formula_data: Dict[str, Any],
         ruta_salida: str,
     ) -> str:
+        self._check_perm()
         contexto = self._construir_contexto(formula_data)
         return generar_por_tipo("formula_medica", contexto, ruta_salida)
 

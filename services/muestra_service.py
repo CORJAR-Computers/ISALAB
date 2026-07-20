@@ -8,20 +8,40 @@ from database.models import Muestra
 from utils.validators import MuestraValidator
 from utils.exceptions import BusinessLogicError
 from utils.logger import setup_logger
+from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class MuestraService:
-    def __init__(self):
+    """Servicio de muestras de laboratorio.
+
+    Fase 3 (issue C1 — RBAC bypass):
+        - ``registrar_muestra`` requiere rol ``asistente`` o superior.
+        - ``actualizar_estado`` requiere rol ``veterinario`` (es una
+          acción clínica: cambiar estado / cargar resultados).
+        - Lectura (``obtener_muestra``, ``listar_muestras``,
+          ``obtener_pendientes``, ``obtener_urgentes``) solo requiere
+          usuario autenticado.
+        - ``generar_codigo`` consume el contador atómico (igual que
+          antes) — no requiere rol especial pero sí autenticación.
+    """
+
+    def __init__(self, usuario_actual: Optional[dict] = None):
         self.muestra_repo = MuestraRepository()
         self.animal_repo = AnimalRepository()
         self.db_manager = DatabaseManager()
+        self.authorizer = Authorizer(usuario_actual)
 
     def obtener_muestra(self, muestra_id: int) -> Muestra:
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.muestra_repo.get_by_id(muestra_id)
 
     def registrar_muestra(self, data: Dict[str, Any]) -> Muestra:
+        # RBAC: requiere rol asistente o superior
+        self.authorizer.require_role('asistente')
+
         try:
             MuestraValidator.validate(data)
             # Verifica que el paciente exista
@@ -59,6 +79,10 @@ class MuestraService:
     def actualizar_estado(self, muestra_id: int, estado: str,
                           resultado: Optional[str] = None,
                           valor_ref: Optional[str] = None) -> None:
+        # RBAC: requiere rol veterinario o superior (cargar resultados
+        # es una acción clínica)
+        self.authorizer.require_role('veterinario')
+
         try:
             if estado not in [
                 'Pendiente',
@@ -75,14 +99,22 @@ class MuestraService:
             raise
 
     def listar_muestras(self, filtros: Optional[Dict] = None) -> List[Muestra]:
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.muestra_repo.get_all(filtros)
 
     def obtener_pendientes(self) -> List[Muestra]:
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.muestra_repo.get_all({'estado': 'Pendiente'})
 
     def obtener_urgentes(self) -> List[Muestra]:
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.muestra_repo.get_all({'urgente': True})
 
     def generar_codigo(self) -> str:
         """Genera código correlativo de manera atómica para laboratorio."""
+        # RBAC: cualquier usuario autenticado puede generar (consumir)
+        self.authorizer.require_authenticated()
         return self.db_manager.generar_codigo('LAB')

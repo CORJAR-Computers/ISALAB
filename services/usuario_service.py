@@ -10,7 +10,7 @@ from utils.security import (
     verify_password,
     validar_fortaleza_password,
     Authorizer,
-    PermissionError,
+    PermissionDeniedError,
     generar_password_temporal,
     necesita_migracion,
 )
@@ -152,7 +152,7 @@ class UsuarioService:
         """
         row = self.db.fetch_one("SELECT COUNT(*) as total FROM usuarios")
         if row and row['total'] > 0:
-            raise PermissionError(
+            raise PermissionDeniedError(
                 "Ya existen usuarios en el sistema. Use crear_usuario() con permisos de admin."
             )
 
@@ -239,7 +239,7 @@ class UsuarioService:
                 "SELECT COUNT(*) as total FROM usuarios WHERE rol = 'admin' AND activo = 1"
             )
             if total_admins and total_admins['total'] <= 1:
-                raise PermissionError(
+                raise PermissionDeniedError(
                     "No se puede desactivar el último administrador")
 
         self.db.execute(

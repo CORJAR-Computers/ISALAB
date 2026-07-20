@@ -22,19 +22,28 @@ from reports import (
     DatosLaboratorio,
 )
 from utils.logger import setup_logger
+from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class ReporteHistoriaClinicaService:
-    """Genera PDFs de historia clínica completa (con consultas de seguimiento)."""
+    """Genera PDFs de historia clínica completa (con consultas de seguimiento).
 
-    def __init__(self):
+    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
+    rol ``asistente`` o superior.
+    """
+
+    def __init__(self, usuario_actual: Optional[dict] = None):
         self.historia_repo = HistoriaClinicaRepository()
         self.animal_repo = AnimalRepository()
         self.consulta_repo = ConsultaRepository()
         self.vacuna_repo = VacunacionRepository()
         self.lab = DatosLaboratorio()
+        self.authorizer = Authorizer(usuario_actual)
+
+    def _check_perm(self) -> None:
+        self.authorizer.require_role('asistente')
 
     # ── API pública ──────────────────────────────────────────────────────
 
@@ -44,6 +53,7 @@ class ReporteHistoriaClinicaService:
         incluir_consultas: bool = True,
         incluir_vacunas: bool = False,
     ) -> bytes:
+        self._check_perm()
         contexto = self._construir_contexto(
             historia_id, incluir_consultas, incluir_vacunas
         )
@@ -56,6 +66,7 @@ class ReporteHistoriaClinicaService:
         incluir_consultas: bool = True,
         incluir_vacunas: bool = False,
     ) -> str:
+        self._check_perm()
         contexto = self._construir_contexto(
             historia_id, incluir_consultas, incluir_vacunas
         )

@@ -1,30 +1,46 @@
 # services/cirugia_service.py
 """Lógica de negocio — Cirugías (CIRU-XXXX)"""
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from database.repositories import CirugiaRepository
 from database.connection import DatabaseManager
 from database.models import Cirugia
-from pydantic import ValidationError
+from pydantic import ValidationError as PydanticValidationError
 
 from schemas.clinica import CirugiaSchema
 from utils.exceptions import BusinessLogicError
 from utils.logger import setup_logger
+from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class CirugiaService:
-    def __init__(self):
+    """Servicio de cirugías.
+
+    Fase 3 (issue C1 — RBAC bypass):
+        - ``programar_cirugia``, ``actualizar_estado`` y
+          ``actualizar_cirugia`` requieren rol ``veterinario`` o
+          superior (son acciones clínicas).
+        - Lectura solo requiere usuario autenticado.
+    """
+
+    def __init__(self, usuario_actual: Optional[dict] = None):
         self.repo = CirugiaRepository()
         self.db_manager = DatabaseManager()
+        self.authorizer = Authorizer(usuario_actual)
 
     def generar_codigo(self) -> str:
         """Genera código correlativo de manera atómica."""
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.db_manager.generar_codigo('CIRU')
 
     def programar_cirugia(self, data: Dict[str, Any]) -> Cirugia:
+        # RBAC: requiere rol veterinario o superior
+        self.authorizer.require_role('veterinario')
+
         try:
             # Generar código automáticamente si no se proporciona
             if not data.get('codigo'):
@@ -53,7 +69,7 @@ class CirugiaService:
             logger.info(f"Cirugía registrada: {cirugia.codigo}")
             return cirugia
 
-        except ValidationError as e:
+        except PydanticValidationError as e:
             error_msg = "\n".join(
                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
             logger.error(f"Error Pydantic en cirugía: {error_msg}")
@@ -64,21 +80,31 @@ class CirugiaService:
             raise
 
     def obtener_cirugia(self, cid: int) -> Cirugia:
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.repo.get_by_id(cid)
 
     def listar_cirugias(self, filtros: dict = None) -> List[Cirugia]:
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.repo.get_all(filtros)
 
     def cirugias_por_paciente(self, animal_id: int) -> List[Cirugia]:
+        # RBAC: cualquier usuario autenticado
+        self.authorizer.require_authenticated()
         return self.repo.get_by_animal(animal_id)
 
     def actualizar_estado(self, cid: int, estado: str,
                           complicaciones: str = None) -> None:
+        # RBAC: requiere rol veterinario o superior
+        self.authorizer.require_role('veterinario')
         self.repo.get_by_id(cid)
         self.repo.update_estado(cid, estado, complicaciones)
         logger.info(f"Cirugía {cid} → estado: {estado}")
 
     def actualizar_cirugia(self, cid: int, data: dict) -> None:
+        # RBAC: requiere rol veterinario o superior
+        self.authorizer.require_role('veterinario')
         cg = self.repo.get_by_id(cid)
         cg.tipo_cirugia = data.get('tipo_cirugia', cg.tipo_cirugia)
         cg.descripcion = data.get('descripcion', cg.descripcion)
@@ -105,6 +131,5 @@ class CirugiaService:
         if not data.get('fecha'):
             errores.append("La fecha es obligatoria")
         if errores:
-            raise ValidationError(
-                "Datos de cirugía inválidos", {
-                    'errores': errores})
+            raise BusinessLogicError(
+                f"Datos de cirugía inválidos: {'; '.join(errores)}")
