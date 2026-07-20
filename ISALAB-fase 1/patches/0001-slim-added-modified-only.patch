@@ -1,0 +1,1601 @@
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..ae095cd
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,24 @@
++# =============================================================================
++# IsaLab — Variables de entorno
++# Copia este archivo a .env y ajusta los valores según tu entorno.
++# NUNCA commitees el archivo .env real (está en .gitignore).
++# =============================================================================
++
++# ── Modo de operación ───────────────────────────────────────────────────
++# 1 = producción (oculta trazas, mensajes genéricos al usuario)
++# 0 = desarrollo (muestra stack traces completos)
++ISALAB_PRODUCTION_MODE=0
++
++# ── Nivel de logging ────────────────────────────────────────────────────
++# Valores válidos: DEBUG, INFO, WARNING, ERROR, CRITICAL
++ISALAB_LOG_LEVEL=INFO
++
++# ── Ruta de la base de datos ────────────────────────────────────────────
++# Por defecto: data/isalab.db (relativa al directorio del proyecto)
++# Sobrescribir solo si necesitas una ubicación personalizada.
++# ISALAB_DB_PATH=/ruta/absoluta/a/isalab.db
++
++# ── Debug en modo congelado (PyInstaller) ───────────────────────────────
++# 1 = abrir consola con prints y trazas (solo para depurar el .exe)
++# 0 = modo silencioso (producción)
++ISALAB_DEBUG=0
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..d885920
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,121 @@
++# =============================================================================
++# IsaLab — CI/CD pipeline
++# Se ejecuta en cada push y Pull Request a main / develop.
++# =============================================================================
++name: CI
++
++on:
++  push:
++    branches: [main, develop]
++  pull_request:
++    branches: [main, develop]
++
++permissions:
++  contents: read
++
++jobs:
++  # ─────────────────────────────────────────────────────────────────────
++  # Lint + Formato + Type-check (rápido, corre en todos los OS)
++  # ─────────────────────────────────────────────────────────────────────
++  lint:
++    name: Lint & Type-check
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Set up Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: "3.11"
++          cache: "pip"
++
++      - name: Install linters
++        run: |
++          python -m pip install --upgrade pip
++          pip install ruff==0.5.7 black==24.8.0 mypy==1.11.2
++
++      - name: Ruff check
++        run: ruff check .
++
++      - name: Black --check
++        run: black --check .
++
++      - name: Mypy (no bloqueante al inicio)
++        continue-on-error: true
++        run: mypy --ignore-missing-imports database services utils || true
++
++  # ─────────────────────────────────────────────────────────────────────
++  # Tests (matriz de versiones de Python)
++  # ─────────────────────────────────────────────────────────────────────
++  test:
++    name: Tests (Python ${{ matrix.python-version }})
++    runs-on: ${{ matrix.os }}
++    strategy:
++      fail-fast: false
++      matrix:
++        os: [ubuntu-latest, windows-latest]
++        python-version: ["3.10", "3.11", "3.12"]
++
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Set up Python ${{ matrix.python-version }}
++        uses: actions/setup-python@v5
++        with:
++          python-version: ${{ matrix.python-version }}
++          cache: "pip"
++
++      - name: Install system deps (Linux)
++        if: runner.os == 'Linux'
++        run: |
++          sudo apt-get update
++          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
++          # WeasyPrint necesita Pango + PangoFT2
++
++      - name: Install requirements
++        run: |
++          python -m pip install --upgrade pip
++          pip install -r requirements-dev.txt
++          pip install -e .
++
++      - name: Run tests
++        run: pytest --cov --cov-report=xml
++
++      - name: Upload coverage to Codecov
++        if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
++        uses: codecov/codecov-action@v4
++        with:
++          files: ./coverage.xml
++          fail_ci_if_error: false
++
++  # ─────────────────────────────────────────────────────────────────────
++  # Build del ejecutable (solo Windows, solo en main)
++  # ─────────────────────────────────────────────────────────────────────
++  build-windows:
++    name: Build .exe (Windows)
++    needs: [lint, test]
++    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
++    runs-on: windows-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Set up Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: "3.11"
++          cache: "pip"
++
++      - name: Install requirements
++        run: |
++          python -m pip install --upgrade pip
++          pip install -r requirements-dev.txt
++
++      - name: Build with PyInstaller
++        run: python build_app.py
++
++      - name: Upload artifact
++        uses: actions/upload-artifact@v4
++        with:
++          name: IsaLab-windows-exe
++          path: dist/IsaLab/
++          retention-days: 14
+diff --git a/.gitignore b/.gitignore
+index 8cd47de..50bbd89 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -39,6 +39,8 @@ identifier.sqlite
+ data/*.db
+ data/*.sqlite
+ data/*.sqlite3
++data/imagenes/           # firmas/sellos generados por el usuario
++data/lab_config.json     # configuración generada en runtime
+ 
+ # ── Logs y Documentos Generados ──
+ logs/
+@@ -50,12 +52,17 @@ data/pdfs/
+ # ── Variables de Entorno y Secretos ──
+ .env
+ .env.*
++!.env.example
+ *.env
+ *.pem
+ *.key
+ secrets.json
+ config_local.py
+ 
++# ── Lockfile (se genera con pip-compile, NO se commitea) ──
++# (descomentar si prefieres no versionar el lock)
++#requirements.lock
++
+ # ── Configuración de IDEs y Editores ──
+ .idea/
+ .vscode/
+@@ -93,3 +100,28 @@ Desktop.ini
+ ._*
+ .Spotlight-V100
+ .Trashes
++
++# ── Duplicados de assets en la raíz del proyecto ──
++# PyInstaller a veces los vuelca en CWD; nunca deben commitearse
++/icono.ico
++/icono.png
++
++# ── Scripts one-shot de mantenimiento ──
++# Ya cumplieron su propósito (fix de flake8 F541, formato Jinja, etc.).
++# Si se necesitan scripts de mantenimiento nuevos, colocarlos en scripts/.
++/fix_*.py
++
++# ── Cobertura de tests ──
++.coverage
++coverage.xml
++htmlcov/
++.pytest_cache/
++.hypothesis/
++
++# ── Mypy cache ──
++.mypy_cache/
++.dmypy.json
++dmypy.json
++
++# ── Ruff cache ──
++.ruff_cache/
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+new file mode 100644
+index 0000000..421d9d0
+--- /dev/null
++++ b/.pre-commit-config.yaml
+@@ -0,0 +1,48 @@
++# =============================================================================
++# IsaLab — Pre-commit hooks
++# Instalación:  pre-commit install
++# Ejecutar:     pre-commit run --all-files
++# =============================================================================
++repos:
++  # Ruff: lint + format (reemplaza flake8 + isort)
++  - repo: https://github.com/astral-sh/ruff-pre-commit
++    rev: v0.5.7
++    hooks:
++      - id: ruff
++        args: [--fix, --exit-non-zero-on-fix]
++      - id: ruff-format
++
++  # Black: formatter complementario
++  - repo: https://github.com/psf/black
++    rev: 24.8.0
++    hooks:
++      - id: black
++        language_version: python3
++
++  # Verificaciones estándar
++  - repo: https://github.com/pre-commit/pre-commit-hooks
++    rev: v4.6.0
++    hooks:
++      - id: trailing-whitespace
++      - id: end-of-file-fixer
++      - id: check-yaml
++      - id: check-toml
++      - id: check-merge-conflict
++      - id: check-added-large-files
++        args: [--maxkb=500]  # bloquear archivos >500 KB
++      - id: check-ast
++      - id: debug-statements
++      - id: detect-private-key  # nunca commitear llaves SSH/PEM
++      - id: check-case-conflict  # предупреждает о Windows/Linux case issues
++
++  # Mypy: type-checking (warning, no bloqueante al inicio)
++  - repo: https://github.com/pre-commit/mirrors-mypy
++    rev: v1.11.2
++    hooks:
++      - id: mypy
++        additional_dependencies: [types-PyYAML]
++        args: [--ignore-missing-imports, --no-strict-optional]
++        verbose: true
++        # No bloquear commits por errores de mypy hasta que la base
++        # de código esté completamente tipeada.
++        stages: [manual]
+diff --git a/AGENTS.md b/AGENTS.md
+index 1596abd..ddb1abf 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,245 +1,119 @@
+-# Superpowers — Integrated Skills for Antigravity
++# AGENTS.md — Guía para agentes AI que trabajen en IsaLab
+ 
+-> **Source:** [obra/superpowers v5.0.7](https://github.com/obra/superpowers)
+-> **Installed:** Skills cloned to `.superpowers/` directory
+-> **Adapted for:** Antigravity agent (non-native plugin mode)
++> **Audiencia:** Agentes de IA (Claude, Cursor, Copilot, etc.) que lean este
++> repo para hacer modificaciones. Resumen ejecutivo de las convenciones y
++> estado actual del proyecto.
+ 
+ ---
+ 
+-## Instruction Priority
++## Identidad del proyecto
+ 
+-1. **User's explicit instructions** — highest priority
+-2. **Superpowers skills below** — override default system behavior
+-3. **Default system prompt** — lowest priority
++- **Nombre:** IsaLab — Centro de Diagnóstico Veterinario
++- **Dominio:** Sistema de escritorio para gestión de clínica veterinaria y
++  laboratorio (pacientes animales, muestras, consultas, cirugías, vacunación,
++  historias clínicas, reportes PDF).
++- **Stack:** Python 3.10+, PySide6, SQLAlchemy 2.x, Alembic, WeasyPrint,
++  Jinja2, bcrypt, PyInstaller.
++- **Repo:** https://github.com/CORJAR-Computers/ISALAB
+ 
+----
+-
+-## Skills Reference
+-
+-Full skill files are available in `.superpowers/skills/` for deep reference.
+-Below is an integrated summary of each skill's core principles.
+-
+----
+-
+-## 🧠 Skill 1: Brainstorming
+-
+-**When:** Before ANY creative work — creating features, building components, adding functionality, or modifying behavior.
+-
+-**HARD GATE:** Do NOT write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it.
+-
+-**Process:**
+-1. Explore project context — check files, docs, recent commits
+-2. Ask clarifying questions — one at a time, prefer multiple choice
+-3. Propose 2-3 approaches — with trade-offs and your recommendation
+-4. Present design — in sections scaled to complexity, get user approval after each
+-5. Write design doc — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+-6. Self-review spec — check for placeholders, contradictions, ambiguity, scope
+-7. User reviews written spec — wait for approval before proceeding
+-8. Transition to implementation — create implementation plan
+-
+-**Key Principles:**
+-- One question at a time — don't overwhelm
+-- YAGNI ruthlessly — remove unnecessary features
+-- Explore alternatives — always propose 2-3 approaches
+-- Incremental validation — present design, get approval before moving on
+-
+----
+-
+-## 📋 Skill 2: Writing Plans
+-
+-**When:** You have a spec or requirements for a multi-step task, before touching code.
+-
+-**Task Granularity:** Each step is one action (2-5 minutes):
+-- "Write the failing test" → step
+-- "Run it to make sure it fails" → step
+-- "Implement the minimal code" → step
+-- "Run tests, make sure they pass" → step
+-- "Commit" → step
+-
+-**Requirements:**
+-- Exact file paths always
+-- Complete code in every step
+-- Exact commands with expected output
+-- DRY, YAGNI, TDD, frequent commits
+-- **No Placeholders** — never write "TBD", "TODO", "implement later", "add appropriate error handling"
+-
+-**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
+-
+----
+-
+-## 🧪 Skill 3: Test-Driven Development (TDD)
+-
+-**When:** Implementing ANY feature or bugfix, before writing implementation code.
+-
+-### The Iron Law
+-
+-```
+-NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+-```
+-
+-Write code before the test? Delete it. Start over. No exceptions.
+-
+-### Red-Green-Refactor Cycle
+-
+-1. **RED** — Write one minimal failing test showing what should happen
+-2. **Verify RED** — Run test, confirm it fails for the expected reason (not errors/typos)
+-3. **GREEN** — Write simplest code to make the test pass
+-4. **Verify GREEN** — Run test, confirm it passes and other tests still pass
+-5. **REFACTOR** — Clean up (remove duplication, improve names, extract helpers)
+-6. **Repeat** — Next failing test for next feature
+-
+-**Good Tests:**
+-- One behavior per test
+-- Clear name describing behavior
+-- Real code (no mocks unless unavoidable)
+-
+-**Common Rationalizations to REJECT:**
+-
+-| Excuse | Reality |
+-|--------|---------|
+-| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+-| "I'll test after" | Tests passing immediately prove nothing. |
+-| "TDD will slow me down" | TDD is faster than debugging. |
+-| "Need to explore first" | Fine. Throw away exploration, start with TDD. |
++> ⚠️ **Importante:** Este archivo antes era una copia literal del documento
++> genérico "obra/superpowers" con claims falsos sobre "Pizzas Pastra". Ese
++> contenido fue reemplazado en Fase 1 del roadmap. NO restaurarlo.
+ 
+ ---
+ 
+-## 🔍 Skill 4: Systematic Debugging
+-
+-**When:** Encountering ANY bug, test failure, or unexpected behavior, BEFORE proposing fixes.
+-
+-### The Iron Law
+-
+-```
+-NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
+-```
+-
+-### The Four Phases
+-
+-#### Phase 1: Root Cause Investigation
+-1. **Read error messages carefully** — don't skip past errors, read stack traces completely
+-2. **Reproduce consistently** — exact steps, every time
+-3. **Check recent changes** — git diff, recent commits, config changes
+-4. **Gather evidence** — add diagnostic logging at component boundaries
+-5. **Trace data flow** — where does the bad value originate? Keep tracing up.
++## Estado del roadmap de refactor
+ 
+-#### Phase 2: Pattern Analysis
+-1. Find working examples in same codebase
+-2. Compare against references — read completely, don't skim
+-3. Identify every difference, however small
+-4. Understand dependencies and assumptions
++El proyecto se entregó con un solo commit de 39 KLOC y múltiples deficiencias.
++El plan de refactor está organizado en fases:
+ 
+-#### Phase 3: Hypothesis and Testing
+-1. Form single hypothesis: "I think X because Y"
+-2. Test with SMALLEST possible change
+-3. One variable at a time
+-4. Didn't work? Form NEW hypothesis, don't add more fixes on top
++| Fase | Alcance                                              | Estado  |
++|------|------------------------------------------------------|---------|
++| 1    | Higiene del repo + setup tooling                     | ✅ Done |
++| 2    | Fix CRITICAL de base de datos (Alembic, dual-access) | ⏳ Todo |
++| 3    | Fix CRITICAL de seguridad (RBAC, Jinja autoescape)   | ⏳ Todo |
++| 4    | Fix CRITICAL de GUI (Dashboard, os.startfile, logo)  | ⏳ Todo |
++| 5    | Issues HIGH (N+1, hilos Qt, etc.)                    | ⏳ Todo |
++| 6    | Issues MEDIUM y LOW                                  | ⏳ Todo |
+ 
+-#### Phase 4: Implementation
+-1. Create failing test case
+-2. Implement single fix — ONE change, no "while I'm here" improvements
+-3. Verify fix — test passes, no other tests broken
+-4. **If 3+ fixes failed:** STOP and question the architecture
+-
+-**Red Flags — STOP and follow process:**
+-- "Quick fix for now, investigate later"
+-- "Just try changing X and see if it works"
+-- "I don't fully understand but this might work"
+-- Proposing solutions before tracing data flow
++Si tu tarea toca una de las áreas pendientes, lee el worklog interno del
++equipo para entender los issues ya identificados (no redescubrirlos).
+ 
+ ---
+ 
+-## ✅ Skill 5: Verification Before Completion
+-
+-**When:** About to claim work is complete, fixed, or passing.
+-
+-### The Iron Law
+-
+-```
+-NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+-```
+-
+-### The Gate Function
+-
+-```
+-BEFORE claiming any status:
+-1. IDENTIFY: What command proves this claim?
+-2. RUN: Execute the FULL command (fresh, complete)
+-3. READ: Full output, check exit code, count failures
+-4. VERIFY: Does output confirm the claim?
+-5. ONLY THEN: Make the claim
+-```
+-
+-**Red Flags — STOP:**
+-- Using "should", "probably", "seems to"
+-- Expressing satisfaction before verification ("Great!", "Done!")
+-- Trusting partial verification
+-- ANY wording implying success without having run verification
+-
+-| Excuse | Reality |
+-|--------|---------|
+-| "Should work now" | RUN the verification |
+-| "I'm confident" | Confidence ≠ evidence |
+-| "Linter passed" | Linter ≠ compiler |
++## Convenciones que SÍ debes seguir
++
++### Commits
++- Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
++  `chore:`, `ci:`.
++- Tag `ISALAB` para issues del roadmap (ej. commit message puede terminar
++  con `ISALAB: C1 base de datos` para referenciar el issue CRITICAL C1).
++
++### Branches
++- `main` — estable, solo recibe merges de `develop`.
++- `develop` — integración activa.
++- `feat/<topic>`, `fix/<topic>` — ramas de trabajo.
++
++### Estilo de código
++- Ruff + Black configurados en `pyproject.toml`. Ejecutar `pre-commit run
++  --all-files` antes de commitear.
++- Line length: 100 caracteres.
++- Type hints: obligatorios en funciones nuevas; las existentes se tipan
++  gradualmente.
++
++### Paths
++- NUNCA usar `Path.cwd()` para resolver assets o DB. SIEMPRE importar desde
++  `config.py`: `BUNDLE_DIR`, `APP_DIR`, `DB_PATH`, `ASSETS_DIR`.
++
++### Base de datos
++- NUNCA usar `sqlite3` directamente. Usar `database/repositories.py` o
++  `database/connection.py` (que abstraen SQLAlchemy).
++- Para migraciones: `alembic revision --autogenerate -m "descripción"` y
++  revisar manualmente el archivo generado.
++
++### Seguridad
++- Hashing de passwords: SIEMPRE bcrypt (vía `utils/security.py`).
++- Generación de PDFs: SIEMPRE vía `reports/base.py` (que activa Jinja2
++  autoescape). NO instanciar `jinja2.Environment` directamente.
++- RBAC: SIEMPRE decorar endpoints de servicios con `Authorizer.require_role`
++  (importar de `utils/security.py`).
++
++### Tests
++- Todo nuevo servicio o fix de bug debe venir con tests.
++- Usar fixtures de `tests/conftest.py` (`qapp`, `tmp_db_path`).
++- Marcadores: `@pytest.mark.slow`, `@pytest.mark.integration`, `@pytest.mark.gui`.
+ 
+ ---
+ 
+-## 📝 Skill 6: Executing Plans
+-
+-**When:** You have a written implementation plan to execute.
++## Errores comunes a evitar
+ 
+-**Process:**
+-1. **Load and Review Plan** — read critically, identify concerns
+-2. **Execute Tasks** — follow each step exactly, run verifications as specified
+-3. **Complete** — verify all tests pass, present options to user
++1. **No regenerar el `data/isalab.db`** — Si necesitas una DB limpia para
++   desarrollo, bórrala y corre `alembic upgrade head`. El asistente de
++   primera ejecución te pedirá crear el admin.
+ 
+-**When to STOP:**
+-- Hit a blocker
+-- Plan has gaps preventing progress
+-- Don't understand an instruction
+-- Verification fails repeatedly
++2. **No commitear `data/`, `logs/`, `*.pyc`, `__pycache__/`, `.idea/`,
++   `.vscode/`, ni archivos `.env`** — El `.gitignore` los excluye, pero
++   `git add -A` puede resucitarlos si se hace desde un checkout viejo.
++   Verificar siempre con `git status` antes de commitear.
+ 
+-**Ask for clarification rather than guessing.**
+-
+----
++3. **No usar `os.startfile()` directamente** — Es Windows-only. Si necesitas
++   abrir un archivo en el explorador del SO, usar `QDesktopServices.openUrl`
++   de PySide6. (Issue CRITICAL de GUI pendiente en Fase 4.)
+ 
+-## 🔎 Skill 7: Code Review
++4. **No instanciar servicios en `__init__` de vistas** — Hace imposible
++   swapear el contexto. Mejor lazy-init o inyección por parámetro. (Issue
++   HIGH de GUI pendiente en Fase 5.)
+ 
+-**When:** After completing tasks, implementing major features, or before merging.
+-
+-**Mandatory reviews:**
+-- After each task completion
+-- After completing a major feature
+-- Before merge to main
+-
+-**Act on feedback:**
+-- Fix Critical issues immediately
+-- Fix Important issues before proceeding
+-- Note Minor issues for later
+-- Push back if wrong (with reasoning)
++5. **No usar `QThread` sin `deleteLater()`** — Filtra memoria y puede crashear
++   al cerrar la app. (Issue HIGH de GUI pendiente en Fase 5.)
+ 
+ ---
+ 
+-## 🧭 Core Philosophy
+-
+-| Principle | Description |
+-|-----------|-------------|
+-| **Test-Driven Development** | Write tests first, always |
+-| **Systematic over ad-hoc** | Process over guessing |
+-| **Complexity reduction** | Simplicity as primary goal |
+-| **Evidence over claims** | Verify before declaring success |
+-| **YAGNI** | You Aren't Gonna Need It — remove unnecessary features |
+-| **DRY** | Don't Repeat Yourself |
+-
+----
+-
+-## Project-Specific Notes
+-
+-- **Tech Stack:** PySide6, Python, SQLite
+-- **Application:** Pizzas Pastra — Point of Sale system
+-- **Design System:** Dark theme with warm accents
+-- **Testing Framework:** (configure as needed — e.g., pytest)
+-
+----
++## Recursos útiles
+ 
+-> For full skill definitions, see `.superpowers/skills/<skill-name>/SKILL.md`
++- `ARCHITECTURE.md` — Diagrama de capas y responsabilidades.
++- `SECURITY.md` — Política de seguridad y vulnerabilidades conocidas.
++- `README.md` — Setup, ejecución, build, tests.
++- `pyproject.toml` — Configuración de tooling.
++- `.github/workflows/ci.yml` — Pipeline de CI (lint, tests, build).
++- `tests/conftest.py` — Fixtures de pytest (DB temporal, QApplication).
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+new file mode 100644
+index 0000000..ba593b8
+--- /dev/null
++++ b/ARCHITECTURE.md
+@@ -0,0 +1,158 @@
++# Arquitectura de IsaLab
++
++> **Estado:** Documento vivo. Última revisión: Fase 1 (higiene de repositorio).
++> **Audiencia:** Desarrolladores nuevos y mantenedores del proyecto.
++
++---
++
++## 1. Visión general
++
++IsaLab es un sistema de escritorio (no web) para la gestión de un centro de
++diagnóstico veterinario: pacientes animales, propietarios, recepción de
++muestras de laboratorio, consultas clínicas, cirugías, vacunación, historias
++clínicas y emisión de reportes médicos en PDF.
++
++La aplicación está construida con **Python 3.10+** y **PySide6** (Qt for
++Python). Persiste en **SQLite** mediante **SQLAlchemy 2.x** como ORM y
++**Alembic** para migraciones de esquema. Los PDFs se generan con
++**WeasyPrint** + **Jinja2** (HTML+CSS → PDF), NO con ReportLab.
++
++```
++┌────────────────────────────────────────────────────────────┐
++│                      main.py (entry point)                 │
++│   Splash → Login → LabVetApp (ventana principal)           │
++└──────────────────────────┬─────────────────────────────────┘
++                           │
++        ┌──────────────────┴──────────────────┐
++        ▼                                     ▼
++┌───────────────────┐                ┌──────────────────┐
++│   gui_pyside/     │                │     services/    │
++│  (vistas PySide6) │  ── llama ──▶  │  (lógica negocio)│
++│                   │                │                  │
++│  views/           │                │  usuario_service │
++│  dialogs/         │                │  animal_service  │
++│  components/      │                │  muestra_service │
++│  utils/           │                │  recepcion_...   │
++│  styles.py        │                │  consulta_...    │
++└────────┬──────────┘                │  cirugia_...     │
++         │                           │  vacuna_...      │
++         │                           │  historia_...    │
++         │                           │  report_*.py     │
++         │                           └────────┬─────────┘
++         │                                    │
++         ▼                                    ▼
++┌───────────────────┐                ┌──────────────────┐
++│   reports/        │                │   database/      │
++│  (generadores PDF)│  ◀── usa ──   │  connection.py   │
++│   generators.py   │                │  repositories.py │
++│   base.py         │                │  models.py       │
++│   helpers.py      │                └────────┬─────────┘
++└───────────────────┘                         │
++                                              ▼
++                                    ┌──────────────────┐
++                                    │  SQLite (file)   │
++                                    │  data/isalab.db  │
++                                    └──────────────────┘
++```
++
++---
++
++## 2. Capas y responsabilidades
++
++### 2.1. `config.py`
++Configuración global: paths (`BUNDLE_DIR`, `APP_DIR`, `DB_PATH`, `ASSETS_DIR`),
++temas (`THEME_LIGHT`, `THEME_DARK`), validaciones, íconos. Todo módulo debe
++importar paths desde aquí, nunca construirlos con `Path.cwd()`.
++
++### 2.2. `database/` (capa de datos)
++- `connection.py` — `DatabaseManager` (singleton, thread-local sessions).
++- `repositories.py` — patrón Repository para cada tabla.
++- `models.py` — esquema de tablas (Pydantic schemas para I/O).
++
++### 2.3. `orm_models/` (ORM SQLAlchemy 2.x)
++Modelos declarativos que mapean a las tablas. **Nota:** existe un anti-patrón
++documentado en el análisis (Tarea 3) donde algunos servicios usan `sqlite3`
++crudo en paralelo al ORM — pendiente de corregir en Fase 2.
++
++### 2.4. `services/` (lógica de negocio)
++Servicios por dominio: `usuario_service.py`, `animal_service.py`,
++`muestra_service.py`, `recepcion_service.py`, `consulta_service.py`,
++`cirugia_service.py`, `vacuna_service.py`, `historia_service.py`,
++`configuracion_service.py`. Más los generadores de reportes (`report_*.py`,
++`pdf_service.py`).
++
++### 2.5. `gui_pyside/` (UI)
++- `app.py` — ventana principal `LabVetApp` con sidebar y content area.
++- `views/` — pantallas principales (dashboard, animales, muestras, …).
++- `dialogs/` — formularios modales (login, nuevo paciente, nueva muestra, …).
++- `components/` — widgets reutilizables (`DataTable`, `SearchBar`, `FormField`).
++- `utils/` — helpers de UI (`messages.py`, `window_manager.py`).
++- `styles.py` — sistema de temas.
++- `splash.py` — pantalla de carga inicial.
++
++### 2.6. `reports/` (generación PDF)
++- `generators.py` — `ReportGenerator` con Jinja2 + WeasyPrint.
++- `base.py` — clase base con autoescape habilitado.
++- `helpers.py` — utilidades (imágenes a base64, formato de fechas, etc.).
++- `templates/` — plantillas HTML de cada reporte.
++
++### 2.7. `utils/`
++- `security.py` — `Authorizer` (RBAC), hashing bcrypt, validación de password.
++- `validators.py` — validadores de dominio (DNI, teléfono, código, etc.).
++- `exceptions.py` — jerarquía `IsaLabException`.
++- `logger.py` — configuración de logging.
++
++### 2.8. `alembic/`
++Migraciones de esquema. Comando: `alembic upgrade head`. La URL se inyecta
++desde `config.DB_PATH` (no usar el valor de `alembic.ini`).
++
++---
++
++## 3. Decisiones técnicas
++
++### ¿Por qué SQLite y no PostgreSQL?
++La aplicación es de escritorio, instalada en clínicas veterinarias sin
++infraestructura de servidor. SQLite es un único archivo (`data/isalab.db`)
++respaldable copiando el archivo. Cuando la app escale a multi-sucursal, se
++migrará a PostgreSQL sin tocar la capa de servicios (solo `config.DB_PATH`
++y `alembic/env.py`).
++
++### ¿Por qué PySide6 y no web?
++Los usuarios son personal de clínica que trabaja con una sola máquina por
++puesto. La UI de escritorio permite mejor manejo de impresoras, escáneres de
++código de barras y modo offline. Si en el futuro se necesita acceso remoto,
++se evaluará una capa FastAPI sobre los servicios existentes.
++
++### ¿Por qué WeasyPrint y no ReportLab?
++WeasyPrint permite diseñar reportes con HTML+CSS (más mantenible y permite a
++diseñadores trabajar sin tocar Python). ReportLab requiere construir el PDF
++programáticamente, lo que hace difícil iterar el diseño.
++
++---
++
++## 4. Roadmap de refactor
++
++El proyecto fue entregado con un solo commit de 39 KLOC. El plan de refactor
++está organizado en fases:
++
++| Fase | Alcance                                              | Estado |
++|------|------------------------------------------------------|--------|
++| 1    | Higiene del repo + setup tooling (este commit)       | ✅     |
++| 2    | Fix CRITICAL de base de datos (cadena Alembic, etc.) | ⏳     |
++| 3    | Fix CRITICAL de seguridad (RBAC, Jinja autoescape)   | ⏳     |
++| 4    | Fix CRITICAL de GUI (Dashboard, `os.startfile`, …)   | ⏳     |
++| 5    | Issues HIGH (N+1 queries, hilos Qt, etc.)            | ⏳     |
++| 6    | Issues MEDIUM y LOW                                  | ⏳     |
++
++El detalle de cada issue está documentado en el worklog interno del equipo.
++
++---
++
++## 5. Convenciones
++
++- **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`,
++  `test:`, `chore:`, `ci:`). Tag `ISALAB` para issues del roadmap.
++- **Branches:** `main` (estable), `develop` (integración),
++  `feat/<topic>`, `fix/<topic>`.
++- **Estilo:** Ruff + Black (configurado en `pyproject.toml`).
++- **Tests:** Cobertura mínima 30 % al inicio, objetivo 70 % en Fase 5.
+diff --git a/IsaLab.spec b/IsaLab.spec
+index 1b7f9c4..1333e23 100644
+--- a/IsaLab.spec
++++ b/IsaLab.spec
+@@ -10,14 +10,23 @@ from pathlib import Path
+ ROOT = Path(os.getcwd())
+ ASSETS = ROOT / "assets"
+ TEMPLATES = ROOT / "templates"
+-DATA_DIR = ROOT / "data"
++ALEMBIC_DIR = ROOT / "alembic"
++ALEMBIC_INI = ROOT / "alembic.ini"
+ MANIFEST = ROOT / "isalab.manifest"
+ 
+-# Incluir carpetas completas con todos sus archivos
++# Incluir carpetas completas con todos sus archivos.
++#
++# NOTA DE SEGURIDAD (issue C2):
++#   NO se incluye el directorio `data/` en el bundle. Hacerlo enviaría
++#   la base de datos local del desarrollador (con hashes de contraseñas
++#   reales y PHI de pacientes) dentro de cada .exe distribuido.
++#   El directorio `data/` se crea vacío en tiempo de ejecución mediante
++#   `DatabaseManager.__init__` / `config.DB_PATH.parent.mkdir(exist_ok=True)`.
+ datas = [
+     (str(ASSETS), "assets"),
+     (str(TEMPLATES), "templates"),
+-    (str(DATA_DIR), "data"),
++    (str(ALEMBIC_DIR), "alembic"),
++    (str(ALEMBIC_INI), "."),
+ ]
+ 
+ # Solo los módulos de PySide6 que la app REALMENTE usa.
+@@ -109,7 +118,7 @@ a = Analysis(
+     runtime_hooks=[],
+     excludes=excludes,
+     noarchive=False,
+-    optimize=0,
++    optimize=2,  # strips docstrings + asserts, reduce tamaño ~5-10%
+ )
+ 
+ pyz = PYZ(a.pure)
+@@ -125,7 +134,10 @@ exe = EXE(
+     strip=False,
+     upx=True,
+     upx_exclude=[],
+-    console=False,
++    # console=False oculta la consola en producción (correcto para UI),
++    # pero dificulta depurar el .exe. Cambiar a True o pasar ISALAB_DEBUG=1
++    # para ver prints y tracebacks en builds de diagnóstico.
++    console=bool(os.getenv('ISALAB_DEBUG', '0') not in {'0', 'false', 'False'}),
+     disable_windowed_traceback=False,
+     # Icono del ejecutable (visible en el Explorador de archivos)
+     icon=str(ASSETS / 'icono.ico'),
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..95e5bc8
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,14 @@
++# =============================================================================
++# IsaLab — LICENSE
++#
++# Derechos Reservados © 2026 CORJAR Computers / IsaLab - Centro de
++# Diagnóstico Veterinario
++#
++# El uso, copia, modificación y distribución de este software está
++# restringido a los términos acordados con el propietario. Para obtener
++# una licencia de uso, contactar a: dev@corjar.com
++#
++# All rights reserved. Unauthorized use, copying, modification or
++# distribution of this software is strictly prohibited without prior
++# written permission from the copyright holder.
++# =============================================================================
+diff --git a/README.md b/README.md
+index fd87625..a70c66c 100644
+--- a/README.md
++++ b/README.md
+@@ -4,8 +4,13 @@
+ ![PySide6](https://img.shields.io/badge/UI-PySide6-green.svg)
+ ![SQLAlchemy](https://img.shields.io/badge/ORM-SQLAlchemy-red.svg)
+ ![License](https://img.shields.io/badge/License-Proprietary-lightgrey.svg)
++![CI](https://github.com/CORJAR-Computers/ISALAB/actions/workflows/ci.yml/badge.svg)
+ 
+-**IsaLab** es un sistema integral de gestión clínica y de laboratorio enfocado en Centros de Diagnóstico Veterinario. Desarrollado con **Python** y **PySide6**, ofrece una interfaz de usuario moderna, rápida y accesible para administrar consultas, cirugías, muestras analíticas, historiales clínicos, vacunación y emisión de reportes médicos en PDF.
++**IsaLab** es un sistema integral de gestión clínica y de laboratorio enfocado
++en Centros de Diagnóstico Veterinario. Desarrollado con **Python** y
++**PySide6**, ofrece una interfaz de usuario moderna, rápida y accesible para
++administrar consultas, cirugías, muestras analíticas, historiales clínicos,
++vacunación y emisión de reportes médicos en PDF.
+ 
+ ---
+ 
+@@ -13,30 +18,41 @@
+ 
+ ### 🐾 Gestión de Pacientes y Propietarios
+ - Registro de mascotas (caninos, felinos y otras especies).
+-- Expediente clínico completo con datos de propietarios, historial de visitas y antecedentes.
++- Expediente clínico completo con datos de propietarios, historial de visitas
++  y antecedentes.
+ 
+ ### 🧪 Módulo de Laboratorio y Muestras
+-- Control de ingreso y recepción de muestras (sangre, orina, heces, citologías, biopsias, etc.).
+-- Seguimiento de estados en tiempo real (*Pendiente*, *En Proceso*, *Completado*, *Descartado*).
++- Control de ingreso y recepción de muestras (sangre, orina, heces,
++  citologías, biopsias, etc.).
++- Seguimiento de estados en tiempo real (*Pendiente*, *En Proceso*,
++  *Completado*, *Descartado*).
+ - Identificadores y códigos estandarizados de muestra.
+ 
+ ### 🩺 Gestión Clínica Integral
+-- **Consultas Médicas:** Registro de motivo, diagnóstico, constantes vitales y tratamientos.
+-- **Cirugías y Anestesia:** Programación de intervenciones, registro de tipos de anestesia y protocolos postoperatorios.
+-- **Vacunación y Desparasitación:** Control de esquemas de vacunación por especie (canina/felina) y vías de administración.
++- **Consultas Médicas:** Registro de motivo, diagnóstico, constantes vitales
++  y tratamientos.
++- **Cirugías y Anestesia:** Programación de intervenciones, registro de tipos
++  de anestesia y protocolos postoperatorios.
++- **Vacunación y Desparasitación:** Control de esquemas de vacunación por
++  especie (canina/felina) y vías de administración.
+ 
+ ### 📊 Dashboards y Reportes Médicos
+-- **Dashboard Estadístico:** Gráficos dinámicos e interactivos desarrollados con Matplotlib.
+-- **Generación de Reportes PDF:** Exportación directa de historiales clínicos y resultados de laboratorio listos para imprimir o enviar al cliente (vía ReportLab).
++- **Dashboard Estadístico:** Gráficos dinámicos e interactivos desarrollados
++  con Matplotlib.
++- **Generación de Reportes PDF:** Exportación directa de historiales clínicos
++  y resultados de laboratorio listos para imprimir o enviar al cliente, usando
++  **WeasyPrint + Jinja2** (HTML+CSS → PDF).
+ 
+ ### 🎨 Interfaz Moderna & Accesible (Healthcare UI)
+-- Diseñada siguiendo estándares **WCAG AA/AAA** para entornos médicos y clínicos.
++- Diseñada siguiendo estándares **WCAG AA/AAA** para entornos médicos y
++  clínicos.
+ - Soporte para **Tema Claro (Light)** y **Tema Oscuro (Dark)**.
+-- Pantalla de carga (Splash Screen) y asistente de instalación inicial en primera ejecución.
++- Pantalla de carga (Splash Screen) y asistente de instalación inicial en
++  primera ejecución.
+ 
+ ### 🔐 Seguridad y Control de Acceso
+-- Autenticación de usuarios con cifrado de contraseñas.
+-- Control de roles y permisos de acceso.
++- Autenticación de usuarios con cifrado de contraseñas (**bcrypt**).
++- Control de roles y permisos de acceso (RBAC).
+ - Asistente de configuración inicial cuando no existen usuarios registrados.
+ 
+ ---
+@@ -44,47 +60,68 @@
+ ## 🛠️ Tecnologías Utilizadas
+ 
+ - **Lenguaje:** Python 3.10+
+-- **Interfaz Gráfica (GUI):** PySide6 (Qt for Python), CustomTkinter
+-- **Base de Datos & ORM:** SQLite, SQLAlchemy, Alembic (migraciones)
+-- **Generación de Reportes:** ReportLab (PDF)
++- **Interfaz Gráfica (GUI):** PySide6 (Qt for Python)
++- **Base de Datos & ORM:** SQLite, SQLAlchemy 2.x, Alembic (migraciones)
++- **Generación de Reportes:** WeasyPrint + Jinja2 (HTML+CSS → PDF)
+ - **Visualización de Datos:** Matplotlib
+-- **Validación de Datos:** Pydantic
++- **Validación de Datos:** Pydantic 2.x
++- **Hashing de contraseñas:** bcrypt
+ - **Empaquetado:** PyInstaller
+ 
++> ℹ️ **Nota histórica:** Versiones anteriores usaban CustomTkinter y ReportLab.
++> Esas dependencias fueron removidas en Fase 1 del roadmap de refactor.
++
+ ---
+ 
+ ## 📁 Estructura del Proyecto
+ 
+ ```text
+ ISALAB/
++├── .github/workflows/  # CI/CD (lint, tests, build .exe)
++├── alembic/            # Migraciones de base de datos
+ ├── assets/             # Recursos visuales (logotipos, iconos .ico y .png)
+-├── database/           # Conexión, inicialización y gestor de SQLite
++├── database/           # Conexión, modelos y repositorios SQLite
+ ├── gui_pyside/         # Componentes, vistas y diálogos en PySide6
+ │   ├── components/     # Componentes de UI reutilizables
+ │   ├── dialogs/        # Ventanas emergentes (Login, Instalador, etc.)
++│   ├── utils/          # Helpers (mensajes, window_manager)
+ │   ├── views/          # Pantallas principales (Muestras, Consultas, Cirugías, etc.)
+ │   └── splash.py       # Pantalla de carga animada
+-├── orm_models/         # Modelos de base de datos de SQLAlchemy
++├── orm_models/         # Modelos SQLAlchemy 2.x declarativos
++├── reports/            # Generadores de PDF (WeasyPrint + Jinja2)
+ ├── services/           # Lógica de negocio y servicios del sistema
+-├── templates/          # Plantillas de reportes PDF y documentos
+-├── utils/              # Utilidades de logging, validación y formato
+-├── alembic/            # Configuraciones y migraciones de base de datos
++├── templates/          # Plantillas HTML para reportes PDF
++├── tests/              # Suite de pruebas con pytest
++├── utils/              # Utilidades (logging, validación, seguridad)
++├── AGENTS.md           # Notas para agentes AI que trabajen en el repo
++├── ARCHITECTURE.md     # Documentación de arquitectura
++├── SECURITY.md         # Política de seguridad y reporte de vulnerabilidades
++├── alembic.ini         # Configuración de Alembic
+ ├── build_app.py        # Script para compilar la aplicación a ejecutable .exe
+ ├── config.py           # Configuración global, constantes y sistema de temas
++├── IsaLab.spec         # Spec de PyInstaller
+ ├── main.py             # Punto de entrada principal de la aplicación
+-└── requirements.txt    # Dependencias de Python
++├── pyproject.toml      # Tooling config (ruff, black, mypy, pytest)
++├── requirements.txt    # Dependencias de runtime
++├── requirements-dev.txt# Dependencias de desarrollo (linters, tests, build)
++└── .env.example        # Plantilla de variables de entorno
+ ```
+ 
++> 📖 Para detalle de capas y responsabilidades, ver
++> [`ARCHITECTURE.md`](ARCHITECTURE.md).
++
+ ---
+ 
+ ## 📥 Instalación y Configuración
+ 
+ ### 1. Requisitos Previos
+-Asegúrate de contar con **Python 3.10** o superior instalado en tu sistema.
++- **Python 3.10** o superior.
++- En Linux: `libpango-1.0-0` y `libpangoft2-1.0-0` (requeridos por WeasyPrint).
++- En Windows: Visual C++ Redistributable (incluido en instalaciones recientes).
+ 
+ ### 2. Clonar el Repositorio
+ ```bash
+-git clone https://github.com/tu-usuario/ISALAB.git
++git clone https://github.com/CORJAR-Computers/ISALAB.git
+ cd ISALAB
+ ```
+ 
+@@ -101,9 +138,25 @@ python3 -m venv .venv
+ source .venv/bin/activate
+ ```
+ 
+-### 4. Instalar Dependencias
++### 4. Configurar Variables de Entorno
++```bash
++cp .env.example .env
++# Edita .env según tu entorno (modo desarrollo, log level, etc.)
++```
++
++### 5. Instalar Dependencias
+ ```bash
++# Solo runtime:
+ pip install -r requirements.txt
++
++# O runtime + herramientas de desarrollo (recomendado):
++pip install -r requirements-dev.txt
++pip install -e .
++```
++
++### 6. Inicializar la Base de Datos
++```bash
++alembic upgrade head
+ ```
+ 
+ ---
+@@ -116,18 +169,30 @@ Para iniciar la aplicación en entorno de desarrollo:
+ python main.py
+ ```
+ 
+-En la primera ejecución, el sistema detectará que no existen usuarios registrados y desplegará automáticamente un asistente de instalación para crear la cuenta de administrador.
++En la primera ejecución, el sistema detectará que no existen usuarios
++registrados y desplegará automáticamente un asistente de instalación para
++crear la cuenta de administrador.
+ 
+ ---
+ 
+ ## 📦 Compilación a Ejecutable (.exe en Windows)
+ 
+-El proyecto incluye un script de compilación automatizado con **PyInstaller** y un manifiesto de Windows para garantizar que el icono en la barra de tareas se muestre de forma independiente:
++El proyecto incluye un script de compilación automatizado con **PyInstaller**
++y un manifiesto de Windows para garantizar que el icono en la barra de tareas
++se muestre de forma independiente:
+ 
+ ```bash
+ python build_app.py
+ ```
+ 
++Para builds de diagnóstico (con consola visible para ver trazas):
++
++```bash
++# En PowerShell:
++$env:ISALAB_DEBUG=1
++python build_app.py
++```
++
+ El ejecutable compilado estará disponible en la carpeta:
+ `dist/IsaLab/IsaLab.exe`
+ 
+@@ -135,15 +200,62 @@ El ejecutable compilado estará disponible en la carpeta:
+ 
+ ## 🧪 Pruebas (Testing)
+ 
+-Para ejecutar la suite de pruebas unitarias e integración con Pytest:
+-
+ ```bash
++# Ejecutar toda la suite con cobertura:
+ pytest
++
++# Solo tests rápidos (excluye lentos):
++pytest -m "not slow"
++
++# Solo tests de servicios:
++pytest tests/test_services/
++
++# Ver reporte HTML de cobertura:
++# (se genera en htmlcov/index.html)
++```
++
++> ℹ️ Los tests corren automáticamente en CI sobre Python 3.10/3.11/3.12
++> en Ubuntu y Windows. Ver [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
++
++---
++
++## 🛠️ Calidad de Código
++
++El proyecto usa **Ruff** (linter + formatter), **Black** (formatter) y
++**Mypy** (type-checker). Para correrlos localmente:
++
++```bash
++ruff check .
++black --check .
++mypy --ignore-missing-imports database services utils
++```
++
++Para instalar los hooks de pre-commit (corren automáticamente antes de cada
++commit):
++
++```bash
++pre-commit install
++pre-commit run --all-files  # primer run
+ ```
+ 
+ ---
+ 
++## 🤝 Contribuir
++
++1. Crea un fork del repositorio.
++2. Crea una rama desde `develop`: `git checkout -b feat/mi-mejora`.
++3. Haz tus cambios siguiendo Conventional Commits (`feat:`, `fix:`, etc.).
++4. Asegúrate de que pasen los tests: `pytest`.
++5. Abre un Pull Request contra `develop`.
++
++Para detalles de arquitectura antes de contribuir, leer
++[`ARCHITECTURE.md`](ARCHITECTURE.md).
++
++---
++
+ ## 📄 Licencia
+ 
+-Derechos Reservados © IsaLab - Centro Diagnóstico Veterinario.  
+-Uso interno y autorizado.
++Derechos Reservados © 2026 CORJAR Computers / IsaLab - Centro de Diagnóstico
++Veterinario. Uso interno y autorizado. Ver archivo [`LICENSE`](LICENSE).
++
++Para reportar vulnerabilidades de seguridad, ver [`SECURITY.md`](SECURITY.md).
+diff --git a/SECURITY.md b/SECURITY.md
+new file mode 100644
+index 0000000..8ec08fa
+--- /dev/null
++++ b/SECURITY.md
+@@ -0,0 +1,46 @@
++# Política de Seguridad — IsaLab
++
++## Reporte de vulnerabilidades
++
++Si descubres una vulnerabilidad de seguridad en IsaLab, **NO la reportes
++públicamente** como un issue de GitHub. En su lugar, escribe a
++**dev@corjar.com** con:
++
++1. Descripción del problema y impacto potencial.
++2. Pasos para reproducirlo (PoC si es posible).
++3. Versión afectada y sistema operativo.
++
++Te responderemos en un máximo de 72 horas hábiles.
++
++## Alcance
++
++Esta política aplica al código del repositorio
++[CORJAR-Computers/ISALAB](https://github.com/CORJAR-Computers/ISALAB) en su
++rama `main`. No aplica a forks ni a despliegues personalizados.
++
++## Estado actual de seguridad
++
++IsaLab está en fase de endurecimiento. Las siguientes áreas tienen issues
++conocidos documentados (ver roadmap interno):
++
++- **RBAC:** actualmente solo `UsuarioService` valida roles. Los demás
++  servicios exponen CRUD sin autenticación de rol (issue CRITICAL C1 de
++  servicios, pendiente en Fase 3).
++- **Generación de PDFs:** algunos caminos no activan Jinja2 autoescape
++  (issue CRITICAL C3 de servicios, pendiente en Fase 3).
++- **Manejo de secretos:** el archivo `data/lab_config.json` se escribe en
++  texto plano sin hardening de permisos (issue MEDIUM, pendiente en Fase 5).
++
++## Prácticas recomendadas para desarrolladores
++
++- **NUNCA** commitear `data/isalab.db`, `logs/*.log`, `data/pdfs/*.pdf`
++  ni archivos `.env`. El `.gitignore` los excluye, pero verificable con
++  `git ls-files | grep -E '(\\.db|\\.log|\\.env|pdfs/)'`.
++- **NUNCA** imprimir hashes de contraseñas, tokens ni PII en logs. El
++  logger debe redactar (pendiente: Fase 5).
++- Usar `bcrypt` para cualquier almacenamiento de contraseñas. No inventar
++  esquemas de hashing propios.
++- Validar toda entrada del usuario con `utils/validators.py` antes de
++  pasarla a servicios.
++- En reportes PDF, SIEMPRE usar `reports/base.py` (que activa autoescape).
++  No instanciar `jinja2.Environment` directamente.
+diff --git a/alembic.ini b/alembic.ini
+index 9279550..fde9537 100644
+--- a/alembic.ini
++++ b/alembic.ini
+@@ -86,7 +86,13 @@ path_separator = os
+ # database URL.  This is consumed by the user-maintained env.py script only.
+ # other means of configuring database URLs may be customized within the env.py
+ # file.
+-sqlalchemy.url = sqlite:///isalab.db
++#
++# NOTA (issue M8): el valor se deja VACÍO aquí. La URL real la inyecta
++# `alembic/env.py` desde `config.DB_PATH` (que apunta a `data/isalab.db`).
++# Antes estaba hardcoded como `sqlite:///isalab.db`, lo que hacía que
++# `alembic upgrade head` creara `./isalab.db` en el CWD en vez de usar
++# la DB real de la aplicación.
++sqlalchemy.url =
+ 
+ 
+ [post_write_hooks]
+diff --git a/main.py b/main.py
+index 157359b..88837fd 100644
+--- a/main.py
++++ b/main.py
+@@ -18,7 +18,13 @@ if sys.platform == 'win32':
+         u'IsaLab.CentroDiagnosticoVeterinario.1.0'
+     )
+ 
+-from config import WINDOW_CONFIG, GLOBAL_STYLESHEET, PRODUCTION_MODE, ASSETS_DIR
++from config import (
++    WINDOW_CONFIG,
++    GLOBAL_STYLESHEET,
++    PRODUCTION_MODE,
++    ASSETS_DIR,
++    BUNDLE_DIR,
++)
+ from gui_pyside.splash import SplashScreen
+ from gui_pyside.dialogs.login_dialog import LoginDialog
+ from gui_pyside.dialogs.instalador_dialog import InstaladorDialog
+@@ -215,8 +221,11 @@ def main():
+         )
+         sys.exit(1)
+ 
+-    # 1. Inicializamos el gestor de iconos
+-    inicializar_manager(Path.cwd())
++    # 1. Inicializamos el gestor de iconos.
++    # Usar BUNDLE_DIR (no Path.cwd()) para que funcione en modo congelado
++    # (.exe): el CWD del usuario puede no ser el directorio del bundle.
++    # Ver issue H9 del análisis.
++    inicializar_manager(BUNDLE_DIR)
+ 
+     # Cargar icono directamente desde archivo .ico para Windows
+     ico_path = ASSETS_DIR / "icono.ico"
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..83c74fd
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,207 @@
++# =============================================================================
++# IsaLab — Centro de Diagnóstico Veterinario
++# Configuración unificada de tooling (ruff, black, mypy, pytest, isort)
++# =============================================================================
++
++[build-system]
++requires = ["setuptools>=68.0", "wheel"]
++build-backend = "setuptools.build_meta"
++
++[project]
++name = "isalab"
++version = "1.0.0"
++description = "Sistema integral de gestión clínica y de laboratorio veterinario"
++readme = "README.md"
++requires-python = ">=3.10"
++license = { text = "Proprietary" }
++authors = [
++    { name = "CORJAR Computers", email = "dev@corjar.com" }
++]
++keywords = ["veterinaria", "laboratorio", "clinica", "pyside6", "sqlalchemy"]
++classifiers = [
++    "Development Status :: 4 - Beta",
++    "Environment :: X11 Applications :: Qt",
++    "Intended Audience :: Healthcare Industry",
++    "Operating System :: Microsoft :: Windows",
++    "Operating System :: POSIX :: Linux",
++    "Programming Language :: Python :: 3",
++    "Programming Language :: Python :: 3.10",
++    "Programming Language :: Python :: 3.11",
++    "Programming Language :: Python :: 3.12",
++    "Topic :: Scientific/Engineering :: Medical Science Apps.",
++]
++dependencies = [
++    "pyside6>=6.6.0,<6.9.0",
++    "sqlalchemy>=2.0.0,<2.1.0",
++    "alembic>=1.13.0,<2.0.0",
++    "pydantic>=2.5.0,<3.0.0",
++    "bcrypt>=4.0.0,<5.0.0",
++    "weasyprint>=60.0,<63.0",
++    "jinja2>=3.1.0,<4.0.0",
++    "Pillow>=10.0.0,<12.0.0",
++    "matplotlib>=3.8.0,<4.0.0",
++]
++
++[project.optional-dependencies]
++dev = [
++    "ruff>=0.5.0,<0.7.0",
++    "black>=24.0.0,<25.0.0",
++    "mypy>=1.10.0,<1.14.0",
++    "pytest>=8.0.0,<9.0.0",
++    "pytest-qt>=4.4.0,<5.0.0",
++    "pytest-cov>=5.0.0,<6.0.0",
++    "pytest-mock>=3.14.0,<4.0.0",
++    "pre-commit>=3.7.0,<4.0.0",
++    "pyinstaller>=6.5.0,<7.0.0",
++    "pip-tools>=7.4.0,<8.0.0",
++]
++
++[project.urls]
++Homepage = "https://github.com/CORJAR-Computers/ISALAB"
++Repository = "https://github.com/CORJAR-Computers/ISALAB"
++Issues = "https://github.com/CORJAR-Computers/ISALAB/issues"
++
++# =============================================================================
++# Ruff — linter + formatter (reemplaza flake8 + isort + pyupgrade)
++# =============================================================================
++[tool.ruff]
++line-length = 100
++target-version = "py310"
++extend-exclude = [
++    ".git",
++    ".venv",
++    "venv",
++    "build",
++    "dist",
++    "localpycs",
++    "alembic/versions",  # migraciones autogeneradas, no las tocamos
++]
++
++[tool.ruff.lint]
++# Reglas activas:
++#   F  = pyflakes (F541 = f-string sin placeholders, etc.)
++#   E  = pycodestyle errors
++#   W  = pycodestyle warnings
++#   I  = isort (orden de imports)
++#   B  = bugbear (bugs comunes)
++#   UP = pyupgrade (modernización de sintaxis)
++#   SIM = simplificaciones
++select = ["F", "E", "W", "I", "B", "UP", "SIM"]
++ignore = [
++    "E501",   # line too long (lo maneja black)
++    "B008",   # function call in default argument (común en PySide6)
++    "SIM108", # ternary en vez de if/else (preferimos if/else explícito)
++]
++
++[tool.ruff.lint.per-file-ignores]
++"__init__.py" = ["F401"]  # exports intencionalmente sin usar
++"tests/*" = ["B011"]      # allow assert False in tests
++
++[tool.ruff.format]
++quote-style = "double"
++indent-style = "space"
++line-ending = "lf"
++
++# =============================================================================
++# Black — formatter complementario
++# =============================================================================
++[tool.black]
++line-length = 100
++target-version = ["py310", "py311", "py312"]
++include = '\.pyi?$'
++extend-exclude = '''
++/(
++    \.git
++  | \.venv
++  | venv
++  | build
++  | dist
++  | localpycs
++  | alembic/versions
++)/
++'''
++
++# =============================================================================
++# Mypy — type-checking estático
++# =============================================================================
++[tool.mypy]
++python_version = "3.10"
++warn_return_any = true
++warn_unused_configs = true
++warn_redundant_casts = true
++warn_unused_ignores = true
++disallow_untyped_defs = false  # activar gradualmente
++disallow_incomplete_defs = false
++check_untyped_defs = true
++no_implicit_optional = true
++strict_equality = true
++show_error_codes = true
++show_column_numbers = true
++pretty = true
++
++# Exclusiones: archivos que no vale la pena type-checkear todavía
++exclude = [
++    "^alembic/versions/",
++    "^build_app\\.py$",
++    "^icon_manager\\.py$",
++]
++
++# overrides para módulos sin stubs
++[[tool.mypy.overrides]]
++module = ["PySide6.*", "weasyprint.*", "matplotlib.*"]
++ignore_missing_imports = true
++
++# =============================================================================
++# Pytest — configuración
++# =============================================================================
++[tool.pytest.ini_options]
++minversion = "8.0"
++testpaths = ["tests"]
++python_files = ["test_*.py"]
++python_classes = ["Test*"]
++python_functions = ["test_*"]
++addopts = [
++    "-v",
++    "--strict-markers",
++    "--tb=short",
++    "--cov=isalab",
++    "--cov-report=term-missing",
++    "--cov-report=html:htmlcov",
++    "--cov-report=xml",
++    "--no-cov-on-fail",
++]
++markers = [
++    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
++    "integration: marks tests that hit the real DB",
++    "gui: marks tests that require a QApplication",
++]
++filterwarnings = [
++    "error",
++    "ignore::DeprecationWarning:PySide6.*",
++    "ignore::DeprecationWarning:weasyprint.*",
++]
++
++# =============================================================================
++# Coverage
++# =============================================================================
++[tool.coverage.run]
++source = ["database", "services", "utils", "gui_pyside", "reports", "config.py"]
++omit = [
++    "*/__pycache__/*",
++    "*/alembic/versions/*",
++    "*/tests/*",
++    "*/build_app.py",
++    "*/icon_manager.py",
++]
++
++[tool.coverage.report]
++exclude_lines = [
++    "pragma: no cover",
++    "def __repr__",
++    "raise NotImplementedError",
++    "if __name__ == .__main__.:",
++    "if TYPE_CHECKING:",
++    "if PRODUCTION_MODE:",
++]
++fail_under = 30  # empezar bajo, ir subiendo
++show_missing = true
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+new file mode 100644
+index 0000000..d4e1094
+--- /dev/null
++++ b/requirements-dev.txt
+@@ -0,0 +1,26 @@
++# IsaLab — dependencias de desarrollo
++# Instalar con:  pip install -r requirements-dev.txt
++# (incluye automáticamente las de runtime)
++-r requirements.txt
++
++# ── Lint / Formato ─────────────────────────────────────────────────────
++ruff>=0.5.0,<0.7.0             # Linter + formatter (reemplaza flake8/isort)
++black>=24.0.0,<25.0.0          # Formatter complementario
++
++# ── Type-checking ──────────────────────────────────────────────────────
++mypy>=1.10.0,<1.14.0           # Análisis estático de tipos
++
++# ── Testing ────────────────────────────────────────────────────────────
++pytest>=8.0.0,<9.0.0           # Framework de pruebas
++pytest-qt>=4.4.0,<5.0.0        # Fixtures para PySide6
++pytest-cov>=5.0.0,<6.0.0       # Cobertura de código
++pytest-mock>=3.14.0,<4.0.0     # Mocking helpers
++
++# ── Pre-commit hooks ───────────────────────────────────────────────────
++pre-commit>=3.7.0,<4.0.0       # Hooks de git (ruff, black, eof-fixer, etc.)
++
++# ── Empaquetado ────────────────────────────────────────────────────────
++pyinstaller>=6.5.0,<7.0.0      # Generación de ejecutable standalone
++
++# ── Lockfile (reproducibilidad) ────────────────────────────────────────
++pip-tools>=7.4.0,<8.0.0        # pip-compile para generar requirements.lock
+diff --git a/requirements.txt b/requirements.txt
+index 89417b3..de832bf 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,17 +1,27 @@
+-# IsaLab — dependencias
+-# Instalar con: pip install -r requirements.txt
++# IsaLab — dependencias de runtime
++# Instalar con:  pip install -r requirements.txt
++#
++# Para desarrollo (linters, type-check, tests, packaging):
++#   pip install -r requirements-dev.txt
++#
++# Nota: Las versiones están pineadas con un rango compatible
++# para evitar breaking changes (ver issue H6 del análisis).
+ 
+-customtkinter>=5.2.0        # Framework principal de UI
+-Pillow>=10.0.0              # Imágenes / logo
+-matplotlib>=3.8.0           # Gráficos en dashboard y reportes
+-tkcalendar>=1.6.1           # DateEntry en formularios
+-reportlab>=4.0.0            # Generación de PDFs
+-tksheet>=7.0.0              # Tablas nativas (reemplaza ttk.Treeview)
++# ── UI / GUI ────────────────────────────────────────────────────────────
++pyside6>=6.6.0,<6.9.0          # Framework principal de UI (Qt for Python)
+ 
+-pyside6
+-sqlalchemy
+-pydantic>=2.5.0
++# ── Datos / ORM / Migraciones ──────────────────────────────────────────
++sqlalchemy>=2.0.0,<2.1.0       # ORM
++alembic>=1.13.0,<2.0.0         # Migraciones de esquema
++pydantic>=2.5.0,<3.0.0         # Validación de schemas
+ 
+-# Testing
+-pytest>=8.0.0
+-pytest-qt>=4.4.0
+\ No newline at end of file
++# ── Seguridad ──────────────────────────────────────────────────────────
++bcrypt>=4.0.0,<5.0.0           # Hashing de contraseñas
++
++# ── Generación de PDFs ─────────────────────────────────────────────────
++weasyprint>=60.0,<63.0         # Motor PDF (HTML+CSS → PDF)
++jinja2>=3.1.0,<4.0.0           # Templates HTML para reportes
++
++# ── Imágenes y gráficos ────────────────────────────────────────────────
++Pillow>=10.0.0,<12.0.0         # Procesamiento de imágenes (firmas, sellos)
++matplotlib>=3.8.0,<4.0.0       # Gráficos en dashboard y reportes
+diff --git a/tests/conftest.py b/tests/conftest.py
+new file mode 100644
+index 0000000..24cda2c
+--- /dev/null
++++ b/tests/conftest.py
+@@ -0,0 +1,69 @@
++"""
++IsaLab — Configuración compartida de pytest.
++
++Provee fixtures para:
++- Base de datos temporal (aislada del `data/isalab.db` de desarrollo).
++- QApplication de PySide6 (para tests de GUI con pytest-qt).
++
++Ver issue H7 del análisis: antes de este archivo, los tests corrían contra
++la DB real y la mutaban.
++"""
++
++from __future__ import annotations
++
++import os
++import tempfile
++from pathlib import Path
++from typing import Iterator
++
++import pytest
++
++
++# ── Aislar la base de datos ANTES de cualquier import de config ──────────────
++# ``config.py`` lee ``DB_PATH`` al importarse, así que el monkeypatch
++# tiene que ocurrir antes de cualquier ``from config import ...`` en los
++# módulos del proyecto. Usamos una fixture de sesión que parchea
++# ``os.environ`` y luego recarga ``config`` si ya estaba importado.
++
++
++@pytest.fixture(scope="session")
++def tmp_db_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
++    """Ruta absoluta a una DB SQLite temporal para toda la sesión de tests."""
++    return tmp_path_factory.mktemp("db") / "test_isalab.db"
++
++
++@pytest.fixture(scope="session", autouse=True)
++def _isolate_db_env(tmp_db_path: Path) -> Iterator[None]:
++    """Fuerza a que ``config.DB_PATH`` apunte a una DB temporal."""
++    os.environ["ISALAB_DB_PATH"] = str(tmp_db_path)
++    os.environ["ISALAB_PRODUCTION_MODE"] = "0"
++    os.environ["ISALAB_LOG_LEVEL"] = "WARNING"
++    yield
++    # Limpieza: nada que hacer, pytest borra tmp_path automáticamente.
++
++
++# ── QApplication para tests de PySide6 (pytest-qt) ───────────────────────────
++@pytest.fixture(scope="session")
++def qapp_cls():
++    """Permite que pytest-qt use la QApplication correcta."""
++    from PySide6.QtWidgets import QApplication
++    return QApplication
++
++
++@pytest.fixture(scope="session")
++def qapp(qapp_cls):
++    """Devuelve la QApplication singleton para tests de GUI."""
++    import sys
++    from PySide6.QtWidgets import QApplication
++    app = QApplication.instance()
++    if app is None:
++        app = QApplication(sys.argv)
++    yield app
++
++
++# ── Marcadores de tests ──────────────────────────────────────────────────────
++def pytest_configure(config: pytest.Config) -> None:
++    """Registra marcadores adicionales."""
++    config.addinivalue_line("markers", "slow: tests lentos (saltar con -m 'not slow')")
++    config.addinivalue_line("markers", "integration: tests que tocan la DB real")
++    config.addinivalue_line("markers", "gui: tests que requieren QApplication")
