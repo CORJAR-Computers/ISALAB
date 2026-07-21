@@ -1,0 +1,15 @@
+diff --git a/gui_pyside/splash.py b/gui_pyside/splash.py
+index a9f244a..e29e9fa 100644
+--- a/gui_pyside/splash.py
++++ b/gui_pyside/splash.py
+@@ -21,7 +21,9 @@ class SplashScreen(QSplashScreen):
+         self.logo = None
+ 
+         # Cargar logo si existe
+-        logo_path = BASE_DIR / "assets" / "logo_sidebar.png"
++        # Fase 4 (C3): el asset real es `Logo_Sidebar.png` (PascalCase).
++        # La referencia lowercase fallaba en Linux/macOS.
++        logo_path = BASE_DIR / "assets" / "Logo_Sidebar.png"
+         if logo_path.exists():
+             self.logo = QPixmap(str(logo_path))
+ 

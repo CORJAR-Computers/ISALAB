@@ -1,0 +1,76 @@
+diff --git a/IsaLab.spec b/IsaLab.spec
+index 1333e23..bd7d5c9 100644
+--- a/IsaLab.spec
++++ b/IsaLab.spec
+@@ -32,18 +32,29 @@ datas = [
+ # Solo los módulos de PySide6 que la app REALMENTE usa.
+ # NO usar collect_submodules('PySide6') — trae QtWebEngineCore y otros
+ # módulos opcionales que no están instalados en este entorno y rompen el build.
++#
++# Audit D-L6 (Fase 6):
++#   * Se removieron ``PySide6.QtSvg`` y ``PySide6.QtSvgWidgets``: grep por
++#     ``QtSvg`` en todo el codebase (.py) da 0 matches → eran peso muerto.
++#     Si en el futuro se cargan iconos SVG vía QtSvg, volver a añadirlos.
++#   * Se añadió ``icon_manager`` explícito (defensivo). PyInstaller lo
++#     autodescubre desde ``main.py``, pero lo listamos para que conste en
++#     el contrato del build y sobreviva a refactorings.
++#   * ``services.*`` y ``orm_models.*`` NO se listan: no hay imports
++#     dinámicos (verificado con ``grep -rn 'importlib\|__import__'``),
++#     así que PyInstaller los descubre transitivamente desde ``main.py``.
+ hiddenimports = [
+     'PySide6.QtWidgets',
+     'PySide6.QtCore',
+     'PySide6.QtGui',
+     'PySide6.QtPrintSupport',
+-    'PySide6.QtSvg',
+-    'PySide6.QtSvgWidgets',
+     'PySide6.QtNetwork',
+     'PySide6.QtSql',
+     'pyparsing',
+     'pyparsing.actions',
+     'pyparsing.testing',
++    # Módulos propios (la mayoría autodescubiertos, listados por claridad):
++    'icon_manager',
+ ]
+ 
+ # Módulos que PyInstaller intenta incluir pero no necesitamos
+@@ -107,6 +118,15 @@ excludes = [
+     'PySide6.QtUiTools',
+ ]
+ 
++# ── Modo debug (issue D-L3/D-L4, Fase 6) ───────────────────────────────
++# ``build_app.py --debug`` exporta ``ISALAB_DEBUG=1`` en el entorno del
++# subprocess de PyInstaller. Aquí lo leemos para:
++#   * ``optimize=0`` (preserva docstrings + asserts, facilita depuración).
++#   * ``console=True`` (muestra stdout/stderr en una consola adjunta).
++# En builds de producción (sin la env var) usamos ``optimize=2`` para
++# reducir el tamaño del binario ~5-10%.
++_debug = os.getenv('ISALAB_DEBUG', '0') not in {'0', 'false', 'False'}
++
+ a = Analysis(
+     ['main.py'],
+     pathex=[str(ROOT)],
+@@ -118,7 +138,7 @@ a = Analysis(
+     runtime_hooks=[],
+     excludes=excludes,
+     noarchive=False,
+-    optimize=2,  # strips docstrings + asserts, reduce tamaño ~5-10%
++    optimize=0 if _debug else 2,  # D-L4: 2 en producción, 0 en debug (D-L3)
+ )
+ 
+ pyz = PYZ(a.pure)
+@@ -134,10 +154,10 @@ exe = EXE(
+     strip=False,
+     upx=True,
+     upx_exclude=[],
+-    # console=False oculta la consola en producción (correcto para UI),
+-    # pero dificulta depurar el .exe. Cambiar a True o pasar ISALAB_DEBUG=1
+-    # para ver prints y tracebacks en builds de diagnóstico.
+-    console=bool(os.getenv('ISALAB_DEBUG', '0') not in {'0', 'false', 'False'}),
++    # console=False oculta la consola en producción (correcto para UI).
++    # Con ``ISALAB_DEBUG=1`` (``build_app.py --debug``) mostramos consola
++    # para ver prints y tracebacks directamente en el .exe de diagnóstico.
++    console=_debug,
+     disable_windowed_traceback=False,
+     # Icono del ejecutable (visible en el Explorador de archivos)
+     icon=str(ASSETS / 'icono.ico'),

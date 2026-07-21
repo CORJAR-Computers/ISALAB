@@ -1,0 +1,24 @@
+diff --git a/services/cirugia_service.py b/services/cirugia_service.py
+index 6369bfc..2a7a0b6 100644
+--- a/services/cirugia_service.py
++++ b/services/cirugia_service.py
+@@ -129,14 +129,8 @@ class CirugiaService:
+         self.repo.update(cg)
+         logger.info(f"Cirugía {cid} actualizada")
+ 
+-    def _validar(self, data: dict) -> None:
+-        errores = []
+-        if not data.get('animal_id'):
+-            errores.append("Debe seleccionar un paciente")
+-        if not data.get('tipo_cirugia', '').strip():
+-            errores.append("El tipo de cirugía es obligatorio")
+-        if not data.get('fecha'):
+-            errores.append("La fecha es obligatoria")
+-        if errores:
+-            raise BusinessLogicError(
+-                f"Datos de cirugía inválidos: {'; '.join(errores)}")
++    # Fase 6 (S-M2): eliminado ``_validar`` muerto. Era dead code —
++    # ningún caller lo invocaba (``programar_cirugia`` valida vía
++    # ``CirugiaSchema`` de Pydantic). Replicaba reglas ya expresadas
++    # en ``schemas/clinica.py::CirugiaSchema`` (animal_id > 0,
++    # tipo_cirugia min_length=1, fecha obligatoria).

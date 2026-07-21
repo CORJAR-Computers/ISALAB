@@ -1,0 +1,58 @@
+diff --git a/utils/security.py b/utils/security.py
+index 37f9ed0..3569989 100644
+--- a/utils/security.py
++++ b/utils/security.py
+@@ -122,6 +122,53 @@ def necesita_migracion(password_hash: str) -> bool:
+     return not password_hash.startswith('$2')
+ 
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# Fase 5 (H-S1): hash "dummy" para mitigar timing attacks en login.
++# ─────────────────────────────────────────────────────────────────────────────
++# Antes, ``UsuarioService.autenticar`` levantaba ``AuthenticationError``
++# INMEDIATAMENTE cuando el usuario no existía, sin ejecutar bcrypt. Eso
++# permitía a un atacante distinguish "usuario no existe" (respuesta
++# rápida) vs "contraseña incorrecta" (respuesta lenta por bcrypt) midiendo
++# el tiempo de respuesta. Con ese oracle, el atacante puede enumerar
++# usernames válidos sin siquiera probar contraseñas.
++#
++# Ahora, cuando el usuario no existe, ``autenticar`` ejecuta
++# ``verify_password(password, DUMMY_BCRYPT_HASH)`` para consumir el mismo
++# tiempo que una verificación real, antes de levantar el error. El
++# ``DUMMY_BCRYPT_HASH`` es un hash bcrypt precomputado de una contraseña
++# aleatoria que NADIE conoce (el valor no se valida contra nada, solo
++# sirve para que ``bcrypt.checkpw`` corra).
++
++
++# Generado con ``bcrypt.gensalt(rounds=12)`` +
++# ``bcrypt.hashpw(secrets.token_bytes(32).hex().encode(), salt)``.
++# rounds=12 → mismo costo que los hashes reales → mismo tiempo de verificación.
++DUMMY_BCRYPT_HASH = (
++    "$2b$12$0123456789012345678901uPxFQ/HQjxv/XuRBKmM5qovtM/oZTDbq"
++)
++
++
++def dummy_verify_password(password: str) -> None:
++    """Ejecuta ``bcrypt.checkpw`` contra un hash dummy, sin importar el resultado.
++
++    Pensado para ser llamado en el branch "usuario no encontrado" de
++    ``UsuarioService.autenticar`` para que el tiempo de respuesta de ese
++    branch sea similar al del branch "contraseña incorrecta", cerrando
++    el timing oracle.
++    """
++    if BCRYPT_AVAILABLE:
++        try:
++            bcrypt.checkpw(
++                password.encode('utf-8'),
++                DUMMY_BCRYPT_HASH.encode('utf-8')
++            )
++        except Exception:
++            # Si bcrypt falla (hash mal formado, etc.), no hay nada
++            # razonable que podamos hacer aquí — el objetivo ya se cumplió
++            # si el tiempo fue similar.
++            pass
++
++
+ def hash_legacy_sha256(password: str) -> str:
+     """Genera hash SHA256 legacy (para compatibilidad)."""
+     return hashlib.sha256(password.encode()).hexdigest()

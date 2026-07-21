@@ -1,0 +1,9 @@
+diff --git a/utils/__init__.py b/utils/__init__.py
+index e69de29..a5c3f8f 100644
+--- a/utils/__init__.py
++++ b/utils/__init__.py
+@@ -0,0 +1,4 @@
++"""Utility helpers for IsaLab — logging (``utils.logger``),
++domain exceptions (``utils.exceptions``), input validators
++(``utils.validators``), and auth/RBAC (``utils.security``).
++"""

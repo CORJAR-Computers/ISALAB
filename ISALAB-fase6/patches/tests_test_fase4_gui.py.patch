@@ -1,0 +1,44 @@
+diff --git a/tests/test_fase4_gui.py b/tests/test_fase4_gui.py
+index f8546ab..b690097 100644
+--- a/tests/test_fase4_gui.py
++++ b/tests/test_fase4_gui.py
+@@ -61,12 +61,19 @@ def _setup_test_db() -> None:
+     from database.connection import DatabaseManager
+ 
+     db = DatabaseManager()
++    # Fase 6: DROP IF EXISTS antes de CREATE para garantizar esquema
++    # limpio (con ``updated_at`` y ``created_at``) incluso si una
++    # corrida anterior dejó tablas con esquema viejo.
++    db.execute("DROP TABLE IF EXISTS animales")
++    db.execute("DROP TABLE IF EXISTS muestras")
++    db.execute("DROP TABLE IF EXISTS consultas")
+     db.execute("""
+         CREATE TABLE IF NOT EXISTS animales (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             nombre TEXT, codigo TEXT, estado TEXT,
+             fecha_ingreso TEXT,
+-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
++            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
++            updated_at TIMESTAMP
+         )
+     """)
+     db.execute("""
+@@ -75,14 +82,16 @@ def _setup_test_db() -> None:
+             codigo TEXT, estado TEXT, urgente INTEGER DEFAULT 0,
+             fecha_recoleccion TEXT, fecha_entrega TEXT,
+             resultado TEXT, valor_referencia TEXT,
+-            tecnico TEXT, created_at TEXT
++            tecnico TEXT, created_at TEXT,
++            updated_at TIMESTAMP
+         )
+     """)
+     db.execute("""
+         CREATE TABLE IF NOT EXISTS consultas (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             fecha_hora TEXT,
+-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
++            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
++            updated_at TIMESTAMP
+         )
+     """)
+ 

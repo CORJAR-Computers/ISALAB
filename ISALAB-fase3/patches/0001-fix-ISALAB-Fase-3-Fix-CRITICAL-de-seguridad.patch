@@ -1,0 +1,2487 @@
+From 46f979c745c3a245c375e171be549d2cbba02a6e Mon Sep 17 00:00:00 2001
+From: IsaLab Phase 1 <isalab-dev@local>
+Date: Mon, 20 Jul 2026 19:54:00 +0000
+Subject: [PATCH] =?UTF-8?q?fix(ISALAB):=20Fase=203=20=E2=80=94=20Fix=20CRI?=
+ =?UTF-8?q?TICAL=20de=20seguridad?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Cuatro fixes críticos de seguridad (issues C1-C4 del análisis Task 4):
+
+C1 — RBAC bypass:
+  Authorizer estaba cableado SOLO en UsuarioService; el resto de
+  servicios operaban sin usuario autenticado. Ahora todos los
+  servicios cablean Authorizer con thread-local fallback
+  (set_current_user/get_current_user). Las operaciones de escritura
+  requieren rol mínimo:
+    - registrar_ingreso / registrar_salida / actualizar_datos → asistente
+    - registrar_muestra → asistente; actualizar_estado muestra → veterinario
+    - registrar_recepcion / actualizar_estado recepción → asistente
+    - registrar_consulta / actualizar_consulta → veterinario
+    - programar_cirugia / actualizar_estado / actualizar_cirugia → veterinario
+    - registrar (vacuna) → veterinario
+    - crear_historia / actualizar_historia → veterinario
+    - guardar_configuracion → admin
+    - generar_* / guardar_* (PDFs) → asistente
+  main.py llama set_current_user(usuario) tras el login.
+
+C2 — Colisión ISAL-0001 en recepciones:
+  RecepcionService.generar_codigo era preview-only (SELECT sin
+  UPDATE), por lo que cada registrar_recepcion producía ISAL-0001
+  y chocaba con UNIQUE constraint. Ahora usa
+  DatabaseManager.generar_codigo('ISAL') atómico, igual que los
+  demás servicios.
+
+C3 — Jinja2 sin autoescape + WeasyPrint SSRF:
+  reports/generators.py construía Environment(loader=...) SIN
+  autoescape, permitiendo HTML injection vía cualquier campo
+  user-controlled (animal.nombre, diagnóstico, observaciones) y
+  SSRF vía <img src=...>/<link href=...> en plantillas. Ahora:
+    - autoescape=select_autoescape(['html','xml','htm'])
+    - trim_blocks=True, lstrip_blocks=True
+    - url_fetcher sandboxed (_safe_url_fetcher) que bloquea
+      http(s)://, ftp://, data: y file:// fuera de TEMPLATES_DIR/BASE_DIR
+  reports/base.py aplica el mismo url_fetcher.
+
+C4 — PermissionError shadow del builtin:
+  utils/security.py definía class PermissionError(Exception) que
+  shadoweaba el builtin de Python (OSError subclass), rompiendo
+  el manejo de excepciones OS-level en cualquier módulo que
+  importara utils.security. Renombrado a
+  PermissionDeniedError(IsaLabException). Se mantiene
+  PermissionError = PermissionDeniedError como alias deprecated.
+  services/usuario_service.py actualizado para usar la nueva clase.
+
+Tests: tests/test_fase3_security.py — 12 tests (todos pasan):
+  - test_C4_permission_denied_error_does_not_shadow_builtin
+  - test_C1_anonymous_user_cannot_register_animal
+  - test_C1_asistente_can_register_animal_but_not_consulta
+  - test_C1_veterinario_can_register_consulta
+  - test_C1_admin_can_guardar_configuracion
+  - test_C1_asistente_cannot_guardar_configuracion
+  - test_C2_generar_codigo_increments_counter
+  - test_C2_two_recepciones_do_not_collide
+  - test_C3_generators_jinja_env_has_autoescape
+  - test_C3_safe_url_fetcher_blocks_external_http
+  - test_C3_safe_url_fetcher_blocks_file_outside_sandbox
+  - test_C3_generar_reporte_with_malicious_context_escapes_html
+
+Archivos modificados:
+  - utils/security.py
+  - reports/generators.py
+  - reports/base.py
+  - main.py
+  - services/usuario_service.py
+  - services/animal_service.py
+  - services/muestra_service.py
+  - services/recepcion_service.py
+  - services/consulta_service.py
+  - services/cirugia_service.py
+  - services/vacuna_service.py
+  - services/historia_service.py
+  - services/configuracion_service.py
+  - services/report_service.py
+  - services/pdf_service.py
+  - services/report_laboratorio.py
+  - services/report_vacunacion.py
+  - services/report_historia_clinica.py
+  - services/report_cirugia.py
+  - services/report_consulta.py
+  - services/report_consentimiento.py
+  - services/report_formula_medica.py
+  - tests/test_fase3_security.py (NUEVO)
+---
+ main.py                             |  13 +
+ reports/base.py                     |  16 +-
+ reports/generators.py               | 118 +++++-
+ services/animal_service.py          |  40 ++-
+ services/cirugia_service.py         |  39 +-
+ services/configuracion_service.py   |  29 +-
+ services/consulta_service.py        |  38 +-
+ services/historia_service.py        |  31 +-
+ services/muestra_service.py         |  34 +-
+ services/pdf_service.py             |  27 ++
+ services/recepcion_service.py       |  79 +++-
+ services/report_cirugia.py          |  15 +-
+ services/report_consentimiento.py   |  17 +-
+ services/report_consulta.py         |  17 +-
+ services/report_formula_medica.py   |  17 +-
+ services/report_historia_clinica.py |  15 +-
+ services/report_laboratorio.py      |  24 +-
+ services/report_service.py          |  20 +-
+ services/report_vacunacion.py       |  15 +-
+ services/usuario_service.py         |   6 +-
+ services/vacuna_service.py          |  48 +--
+ tests/test_fase3_security.py        | 536 ++++++++++++++++++++++++++++
+ utils/security.py                   | 129 ++++++-
+ 23 files changed, 1212 insertions(+), 111 deletions(-)
+ create mode 100644 tests/test_fase3_security.py
+
+diff --git a/main.py b/main.py
+index 88837fd..3ece948 100644
+--- a/main.py
++++ b/main.py
+@@ -30,6 +30,7 @@ from gui_pyside.dialogs.login_dialog import LoginDialog
+ from gui_pyside.dialogs.instalador_dialog import InstaladorDialog
+ from gui_pyside.app import LabVetApp
+ from utils.logger import setup_logger
++from utils.security import set_current_user, clear_current_user
+ from database.connection import DatabaseManager
+ from gui_pyside.utils.messages import install_messagebox_style_filter
+ 
+@@ -185,6 +186,18 @@ def iniciar_sesion(splash, icono_app):
+             return
+ 
+         usuario = getattr(login_dialog, 'usuario', {})
++
++        # Fase 3 (issue C1 — RBAC bypass): registrar el usuario autenticado
++        # en el contexto thread-local para que todos los servicios lo
++        # picken automáticamente vía ``Authorizer()``. Antes, el Authorizer
++        # solo se cableaba en ``UsuarioService``; el resto de servicios
++        # operaban sin usuario y el RBAC estaba efectivamente burlado.
++        set_current_user(usuario)
++        logger.info(
++            f"Usuario autenticado registrado en contexto thread-local: "
++            f"{usuario.get('username', '?')} (rol: {usuario.get('rol', '?')})"
++        )
++
+         window = LabVetApp(usuario=usuario)
+ 
+         # Aplicar icono a ventana principal Y a la aplicación
+diff --git a/reports/base.py b/reports/base.py
+index 23f7343..61d0bf9 100644
+--- a/reports/base.py
++++ b/reports/base.py
+@@ -430,8 +430,20 @@ class ReporteBase(ABC):
+         return ""
+ 
+     def _convertir_a_pdf(self, html: str) -> bytes:
+-        """Convierte HTML a PDF usando WeasyPrint."""
+-        documento = HTML(string=html)
++        """Convierte HTML a PDF usando WeasyPrint.
++
++        Fase 3 (issue C3): usa el ``url_fetcher`` sandboxed de
++        ``reports.generators`` para bloquear cualquier recurso externo
++        (``http(s)://``, ``ftp://``, ``data:``) y solo permitir
++        ``file://`` bajo ``BASE_DIR`` (logos, firmas, sellos, fuentes
++        locales). Previene SSRF vía plantillas PDF.
++        """
++        from reports.generators import _safe_url_fetcher
++
++        documento = HTML(
++            string=html,
++            url_fetcher=_safe_url_fetcher,
++        )
+         pdf = documento.render(
+             font_config=self.font_config,
+             presentational_hints=True
+diff --git a/reports/generators.py b/reports/generators.py
+index de3b109..683d531 100644
+--- a/reports/generators.py
++++ b/reports/generators.py
+@@ -1,10 +1,30 @@
+ # reports/generators.py
++"""
++Motor de generación de reportes — ISALAB.
++
++Fase 3 (issue C3 — CRÍTICO de seguridad):
++    Antes, ``Environment(loader=FileSystemLoader(...))`` se construía SIN
++    ``autoescape``, lo que permitía inyección HTML/JS a través de
++    cualquier campo controlado por el usuario (``animal.nombre``,
++    ``propietario``, ``diagnostico``, ``observaciones``, etc.). El PDF
++    generado por WeasyPrint podía incrustar ``<script>``, ``<iframe>``,
++    o peor, etiquetas ``<img src=...>``/``<link href=...>`` que disparaban
++    peticiones HTTP externas (SSRF) al renderizar.
++
++    Ahora:
++    1. ``Environment`` se crea con ``select_autoescape(['html', 'xml'])``.
++    2. ``trim_blocks``/``lstrip_blocks`` para limpiar whitespace.
++    3. ``HTML(...).write_pdf(url_fetcher=_safe_url_fetcher)`` restringe
++       los recursos que WeasyPrint puede fetchear: SOLO ``file://``
++       bajo ``TEMPLATES_DIR``. Cualquier URL ``http(s)://`` externa o
++       archivo fuera del sandbox se rechaza.
++"""
+ from pathlib import Path
+ from typing import Union
+-from jinja2 import Environment, FileSystemLoader
++from urllib.parse import urlparse
++from jinja2 import Environment, FileSystemLoader, select_autoescape
+ from weasyprint import HTML
+ 
+-
+ import sys
+ 
+ if getattr(sys, 'frozen', False):
+@@ -20,11 +40,94 @@ TEMPLATES_DIR = BASE_DIR / 'templates'
+ _reportes_disponibles = {}
+ 
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# Sandbox de recursos (Fase 3 — issue C3 SSRF / HTML injection)
++# ─────────────────────────────────────────────────────────────────────────────
++
++def _safe_url_fetcher(url: str, timeout: int = 10, ssl_context=None):
++    """
++    ``url_fetcher`` para WeasyPrint que RECHAZA cualquier recurso externo.
++
++    WeasyPrint pide al ``url_fetcher`` resolver TODO: CSS ``@import``,
++    ``url()``, ``<img src>``, ``<link>``, fuentes ``@font-face``, etc.
++
++    Política:
++      - ``file://`` permitido SOLO si el path está bajo ``TEMPLATES_DIR``
++        o ``BASE_DIR`` (logos, firmas, sellos, fuentes locales).
++      - Todo lo demás (``http://``, ``https://``, ``ftp://``, ``data:``)
++        se rechaza con ``ValueError``. WeasyPrint lo registra como
++        recurso no disponible y sigue renderizando el PDF sin ese
++        recurso, en lugar de hacer una petición de red.
++    """
++    import logging
++    sandbox_logger = logging.getLogger("isalab.reports.sandbox")
++
++    parsed = urlparse(url)
++    scheme = (parsed.scheme or '').lower()
++
++    if scheme == 'file':
++        # Resolver path absoluto del archivo solicitado
++        try:
++            local_path = Path(parsed.path).resolve()
++        except (OSError, ValueError):
++            sandbox_logger.warning(
++                f"[sandbox] path inválido rechazado: {url}"
++            )
++            raise ValueError(f"URL no permitida: {url}")
++
++        # Solo permitir archivos bajo TEMPLATES_DIR o BASE_DIR
++        try:
++            local_path.relative_to(TEMPLATES_DIR.resolve())
++            allowed = True
++        except ValueError:
++            try:
++                local_path.relative_to(BASE_DIR.resolve())
++                allowed = True
++            except ValueError:
++                allowed = False
++
++        if not allowed:
++            sandbox_logger.warning(
++                f"[sandbox] file fuera del sandbox rechazado: {url}"
++            )
++            raise ValueError(
++                f"Archivo fuera del sandbox permitido: {url}"
++            )
++
++        # Delegar al fetcher por defecto de WeasyPrint para file://
++        from weasyprint.default_url_fetcher import fetch
++        return fetch(url, timeout=timeout, ssl_context=ssl_context)
++
++    # Cualquier otro esquema (http, https, ftp, data) → rechazar
++    sandbox_logger.warning(
++        f"[sandbox] recurso externo rechazado: {url}"
++    )
++    raise ValueError(
++        f"Recurso externo no permitido en PDF: {url}. "
++        f"Solo se permiten archivos locales bajo {TEMPLATES_DIR}."
++    )
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# API pública
++# ─────────────────────────────────────────────────────────────────────────────
++
+ def registrar_reporte(tipo: str, clase: type):
+     """Registra un tipo de reporte para generación por nombre."""
+     _reportes_disponibles[tipo] = clase
+ 
+ 
++def _build_jinja_env() -> Environment:
++    """Construye un Environment Jinja2 con autoescape SIEMPRE activo."""
++    return Environment(
++        loader=FileSystemLoader(str(TEMPLATES_DIR)),
++        # CRÍTICO: autoescape para HTML/XML previene inyección.
++        autoescape=select_autoescape(['html', 'xml', 'htm']),
++        trim_blocks=True,
++        lstrip_blocks=True,
++    )
++
++
+ def generar_reporte(
+         clase_o_template: Union[type, str],
+         contexto: dict = None,
+@@ -33,11 +136,13 @@ def generar_reporte(
+     """
+     Motor híbrido: Soporta tanto clases ReporteBase estrictas
+     como renderizado directo de plantillas HTML.
++
++    Fase 3: SIEMPRE usa autoescape + url_fetcher sandboxed.
+     """
+     if isinstance(clase_o_template, str):
+         # Modo Directo: Tomamos la plantilla HTML y le inyectamos el
+         # diccionario de datos
+-        env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
++        env = _build_jinja_env()
+         nombre_archivo = f"{clase_o_template}.html" if not clase_o_template.endswith(
+             '.html') else clase_o_template
+         template = env.get_template(nombre_archivo)
+@@ -47,8 +152,11 @@ def generar_reporte(
+         datos.update(kwargs)
+ 
+         html_renderizado = template.render(**datos)
+-        return HTML(string=html_renderizado,
+-                    base_url=str(TEMPLATES_DIR)).write_pdf()
++        return HTML(
++            string=html_renderizado,
++            base_url=str(TEMPLATES_DIR),
++            url_fetcher=_safe_url_fetcher,
++        ).write_pdf()
+     else:
+         # Modo Enterprise: Instanciar la clase heredada de ReporteBase
+         reporte = clase_o_template(**kwargs)
+diff --git a/services/animal_service.py b/services/animal_service.py
+index 987cd0a..20d4b37 100644
+--- a/services/animal_service.py
++++ b/services/animal_service.py
+@@ -8,20 +8,37 @@ from database.connection import DatabaseManager
+ from database.models import Animal, Movimiento
+ from utils.exceptions import BusinessLogicError, DuplicateError
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ from schemas.animal import AnimalSchema
+-from pydantic import ValidationError
++from pydantic import ValidationError as PydanticValidationError
+ 
+ logger = setup_logger()
+ 
+ 
+ class AnimalService:
+-    def __init__(self):
++    """Servicio de pacientes (animales).
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``__init__`` acepta ``usuario_actual`` y construye
++          ``self.authorizer``.
++        - Operaciones de escritura (``registrar_ingreso``,
++          ``registrar_salida``, ``actualizar_datos``) requieren rol
++          ``asistente`` o superior.
++        - Lectura (``obtener_animal``, ``listar_animales``,
++          ``obtener_historial``, ``obtener_siguiente_codigo``) solo
++          requiere usuario autenticado.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.animal_repo = AnimalRepository()
+         self.movimiento_repo = MovimientoRepository()
+         self.db_manager = DatabaseManager()  # Para el generador de códigos
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def obtener_siguiente_codigo(self) -> str:
+         """Usa el contador atómico de la BD para evitar colisiones si borran registros."""
++        # RBAC: cualquier usuario autenticado puede previsualizar el código
++        self.authorizer.require_authenticated()
+         try:
+             return self.db_manager.generar_codigo('PAC')
+         except Exception as e:
+@@ -29,9 +46,14 @@ class AnimalService:
+             return "PAC-001"
+ 
+     def obtener_animal(self, animal_id: int) -> Animal:
++        # RBAC: cualquier usuario autenticado puede consultar
++        self.authorizer.require_authenticated()
+         return self.animal_repo.get_by_id(animal_id)
+ 
+     def registrar_ingreso(self, data: Dict[str, Any]) -> Animal:
++        # RBAC: requiere rol asistente o superior
++        self.authorizer.require_role('asistente')
++
+         try:
+             # 1. Validamos con Pydantic.
+             # NOTA: Asegúrate de tener configurado extra="ignore" en tu
+@@ -88,7 +110,7 @@ class AnimalService:
+             logger.info(f"Ingreso registrado: {animal.codigo}")
+             return animal
+ 
+-        except ValidationError as e:
++        except PydanticValidationError as e:
+             error_msg = "\n".join(
+                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+             logger.error(f"Error de validación Pydantic: {error_msg}")
+@@ -98,6 +120,9 @@ class AnimalService:
+             raise
+ 
+     def registrar_salida(self, animal_id: int, data: Dict[str, Any]) -> None:
++        # RBAC: requiere rol asistente o superior
++        self.authorizer.require_role('asistente')
++
+         try:
+             animal = self.animal_repo.get_by_id(animal_id)
+             if animal.estado == 'Dado de Alta':
+@@ -124,6 +149,9 @@ class AnimalService:
+             raise
+ 
+     def actualizar_datos(self, animal_id: int, data: Dict[str, Any]) -> Animal:
++        # RBAC: requiere rol asistente o superior
++        self.authorizer.require_role('asistente')
++
+         try:
+             animal = self.animal_repo.get_by_id(animal_id)
+             data['codigo'] = animal.codigo  # Inyectamos el código
+@@ -159,7 +187,7 @@ class AnimalService:
+             self.animal_repo.update(animal)
+             return animal
+ 
+-        except ValidationError as e:
++        except PydanticValidationError as e:
+             error_msg = "\n".join(
+                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+             raise BusinessLogicError(f"Datos inválidos:\n{error_msg}")
+@@ -168,7 +196,11 @@ class AnimalService:
+             raise
+ 
+     def listar_animales(self, filtros: Optional[Dict] = None, limit: Optional[int] = 50, offset: Optional[int] = 0) -> List[Animal]:
++        # RBAC: cualquier usuario autenticado puede listar
++        self.authorizer.require_authenticated()
+         return self.animal_repo.get_all(filtros, limit=limit, offset=offset)
+ 
+     def obtener_historial(self, animal_id: int) -> List[Movimiento]:
++        # RBAC: cualquier usuario autenticado puede consultar
++        self.authorizer.require_authenticated()
+         return self.movimiento_repo.get_by_animal(animal_id)
+diff --git a/services/cirugia_service.py b/services/cirugia_service.py
+index 63f3b04..1cc3fe5 100644
+--- a/services/cirugia_service.py
++++ b/services/cirugia_service.py
+@@ -1,30 +1,46 @@
+ # services/cirugia_service.py
+ """Lógica de negocio — Cirugías (CIRU-XXXX)"""
+ 
+-from typing import List, Dict, Any
++from typing import List, Dict, Any, Optional
+ 
+ from database.repositories import CirugiaRepository
+ from database.connection import DatabaseManager
+ from database.models import Cirugia
+-from pydantic import ValidationError
++from pydantic import ValidationError as PydanticValidationError
+ 
+ from schemas.clinica import CirugiaSchema
+ from utils.exceptions import BusinessLogicError
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class CirugiaService:
+-    def __init__(self):
++    """Servicio de cirugías.
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``programar_cirugia``, ``actualizar_estado`` y
++          ``actualizar_cirugia`` requieren rol ``veterinario`` o
++          superior (son acciones clínicas).
++        - Lectura solo requiere usuario autenticado.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.repo = CirugiaRepository()
+         self.db_manager = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def generar_codigo(self) -> str:
+         """Genera código correlativo de manera atómica."""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.db_manager.generar_codigo('CIRU')
+ 
+     def programar_cirugia(self, data: Dict[str, Any]) -> Cirugia:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
++
+         try:
+             # Generar código automáticamente si no se proporciona
+             if not data.get('codigo'):
+@@ -53,7 +69,7 @@ class CirugiaService:
+             logger.info(f"Cirugía registrada: {cirugia.codigo}")
+             return cirugia
+ 
+-        except ValidationError as e:
++        except PydanticValidationError as e:
+             error_msg = "\n".join(
+                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+             logger.error(f"Error Pydantic en cirugía: {error_msg}")
+@@ -64,21 +80,31 @@ class CirugiaService:
+             raise
+ 
+     def obtener_cirugia(self, cid: int) -> Cirugia:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_id(cid)
+ 
+     def listar_cirugias(self, filtros: dict = None) -> List[Cirugia]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_all(filtros)
+ 
+     def cirugias_por_paciente(self, animal_id: int) -> List[Cirugia]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_animal(animal_id)
+ 
+     def actualizar_estado(self, cid: int, estado: str,
+                           complicaciones: str = None) -> None:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
+         self.repo.get_by_id(cid)
+         self.repo.update_estado(cid, estado, complicaciones)
+         logger.info(f"Cirugía {cid} → estado: {estado}")
+ 
+     def actualizar_cirugia(self, cid: int, data: dict) -> None:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
+         cg = self.repo.get_by_id(cid)
+         cg.tipo_cirugia = data.get('tipo_cirugia', cg.tipo_cirugia)
+         cg.descripcion = data.get('descripcion', cg.descripcion)
+@@ -105,6 +131,5 @@ class CirugiaService:
+         if not data.get('fecha'):
+             errores.append("La fecha es obligatoria")
+         if errores:
+-            raise ValidationError(
+-                "Datos de cirugía inválidos", {
+-                    'errores': errores})
++            raise BusinessLogicError(
++                f"Datos de cirugía inválidos: {'; '.join(errores)}")
+diff --git a/services/configuracion_service.py b/services/configuracion_service.py
+index 875b533..ae793d5 100644
+--- a/services/configuracion_service.py
++++ b/services/configuracion_service.py
+@@ -2,30 +2,44 @@
+ import json
+ from pathlib import Path
+ import sys
++from typing import Optional
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ class ConfiguracionService:
+-    """Servicio para manejar la configuración persistente del laboratorio."""
++    """Servicio para manejar la configuración persistente del laboratorio.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``guardar_configuracion`` requiere rol ``admin`` (la
++          configuración del laboratorio incluye datos sensibles como
++          NIT, dirección, datos del director, etc.).
++        - ``cargar_configuracion`` solo requiere usuario autenticado.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         # Determinar la ruta del archivo config.json en la carpeta data
+         if getattr(sys, 'frozen', False):
+             self.base_dir = Path(sys.executable).parent
+         else:
+             self.base_dir = Path(__file__).resolve().parent.parent
+-            
++
+         self.data_dir = self.base_dir / "data"
+         self.config_path = self.data_dir / "lab_config.json"
+-        
++
+         self.data_dir.mkdir(parents=True, exist_ok=True)
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def cargar_configuracion(self) -> dict:
+         """Carga la configuración desde el archivo JSON. Si no existe, retorna dict vacío."""
++        # RBAC: cualquier usuario autenticado puede leer la configuración
++        # (se necesita para mostrar datos del laboratorio en reportes, etc.)
++        self.authorizer.require_authenticated()
++
+         if not self.config_path.exists():
+             return {}
+-            
++
+         try:
+             with open(self.config_path, 'r', encoding='utf-8') as f:
+                 return json.load(f)
+@@ -35,11 +49,14 @@ class ConfiguracionService:
+ 
+     def guardar_configuracion(self, config_data: dict) -> bool:
+         """Guarda la configuración en el archivo JSON."""
++        # RBAC: requiere rol admin
++        self.authorizer.require_role('admin')
++
+         try:
+             # Mantener configuración existente y actualizar con la nueva
+             current_config = self.cargar_configuracion()
+             current_config.update(config_data)
+-            
++
+             with open(self.config_path, 'w', encoding='utf-8') as f:
+                 json.dump(current_config, f, indent=4, ensure_ascii=False)
+             return True
+diff --git a/services/consulta_service.py b/services/consulta_service.py
+index 9abb45c..6c9f292 100644
+--- a/services/consulta_service.py
++++ b/services/consulta_service.py
+@@ -1,30 +1,47 @@
+ # services/consulta_service.py
+ """Lógica de negocio — Consultas ambulatorias (CONS-XXXX)"""
+ 
+-from typing import List, Dict, Any
++from typing import List, Dict, Any, Optional
+ 
+ from database.repositories import ConsultaRepository
+ from database.connection import DatabaseManager
+ from database.models import Consulta
+-from pydantic import ValidationError
++from pydantic import ValidationError as PydanticValidationError
+ 
+ from schemas.clinica import ConsultaSchema
+ from utils.exceptions import BusinessLogicError
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ConsultaService:
+-    def __init__(self):
++    """Servicio de consultas ambulatorias.
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``registrar_consulta`` y ``actualizar_consulta`` requieren
++          rol ``veterinario`` o superior (son acciones clínicas).
++        - Lectura (``obtener_consulta``, ``listar_consultas``,
++          ``consultas_por_paciente``, ``generar_codigo``) solo requiere
++          usuario autenticado.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.repo = ConsultaRepository()
+         self.db_manager = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def generar_codigo(self) -> str:
+         """Genera código correlativo de manera atómica."""
++        # RBAC: cualquier usuario autenticado puede generar (consumir)
++        self.authorizer.require_authenticated()
+         return self.db_manager.generar_codigo('CONS')
+ 
+     def registrar_consulta(self, data: Dict[str, Any]) -> Consulta:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
++
+         try:
+             # Generar código automáticamente si no se proporciona
+             if not data.get('codigo'):
+@@ -50,7 +67,7 @@ class ConsultaService:
+             logger.info(f"Consulta registrada: {consulta.codigo}")
+             return consulta
+ 
+-        except ValidationError as e:
++        except PydanticValidationError as e:
+             error_msg = "\n".join(
+                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+             logger.error(f"Error Pydantic en consulta: {error_msg}")
+@@ -61,15 +78,23 @@ class ConsultaService:
+             raise
+ 
+     def obtener_consulta(self, cid: int) -> Consulta:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_id(cid)
+ 
+     def listar_consultas(self, filtros: dict = None) -> List[Consulta]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_all(filtros)
+ 
+     def consultas_por_paciente(self, animal_id: int) -> List[Consulta]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_animal(animal_id)
+ 
+     def actualizar_consulta(self, cid: int, data: dict) -> None:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
+         c = self.repo.get_by_id(cid)
+         c.motivo = data.get('motivo', c.motivo)
+         c.evolucion = data.get('evolucion', c.evolucion)
+@@ -89,6 +114,5 @@ class ConsultaService:
+         if not data.get('motivo', '').strip():
+             errores.append("El motivo de consulta es obligatorio")
+         if errores:
+-            raise ValidationError(
+-                "Datos de consulta inválidos", {
+-                    'errores': errores})
++            raise BusinessLogicError(
++                f"Datos de consulta inválidos: {'; '.join(errores)}")
+diff --git a/services/historia_service.py b/services/historia_service.py
+index 77666aa..6f9a874 100644
+--- a/services/historia_service.py
++++ b/services/historia_service.py
+@@ -6,18 +6,31 @@ from typing import List, Optional
+ 
+ from database.repositories import HistoriaClinicaRepository, RecepcionRepository
+ from database.models import HistoriaClinica
+-from utils.exceptions import ValidationError
++from utils.exceptions import BusinessLogicError
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class HistoriaService:
+-    def __init__(self):
++    """Servicio de historias clínicas.
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``crear_historia`` y ``actualizar_historia`` requieren rol
++          ``veterinario`` o superior (son acciones clínicas).
++        - Lectura solo requiere usuario autenticado.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.repo = HistoriaClinicaRepository()
+         self.rec_repo = RecepcionRepository()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def crear_historia(self, data: dict) -> HistoriaClinica:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
++
+         self._validar(data)
+         historia = HistoriaClinica(
+             recepcion_id=int(data['recepcion_id']),
+@@ -43,17 +56,26 @@ class HistoriaService:
+         return historia
+ 
+     def obtener_historia(self, hid: int) -> HistoriaClinica:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_id(hid)
+ 
+     def historias_por_paciente(self, animal_id: int) -> List[HistoriaClinica]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_animal(animal_id)
+ 
+     def historia_de_recepcion(
+             self,
+             recepcion_id: int) -> Optional[HistoriaClinica]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_recepcion(recepcion_id)
+ 
+     def actualizar_historia(self, hid: int, data: dict) -> None:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
++
+         h = self.repo.get_by_id(hid)
+         h.anamnesis = data.get('anamnesis') or h.anamnesis
+         h.examen_fisico = data.get('examen_fisico') or h.examen_fisico
+@@ -79,9 +101,8 @@ class HistoriaService:
+         if not data.get('animal_id'):
+             errores.append("El paciente es obligatorio")
+         if errores:
+-            raise ValidationError(
+-                "Datos de historia clínica inválidos", {
+-                    'errores': errores})
++            raise BusinessLogicError(
++                f"Datos de historia clínica inválidos: {'; '.join(errores)}")
+ 
+ 
+ # ── helpers de conversión segura ──────────────────────────────────────────
+diff --git a/services/muestra_service.py b/services/muestra_service.py
+index 483f2d1..204638d 100644
+--- a/services/muestra_service.py
++++ b/services/muestra_service.py
+@@ -8,20 +8,40 @@ from database.models import Muestra
+ from utils.validators import MuestraValidator
+ from utils.exceptions import BusinessLogicError
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class MuestraService:
+-    def __init__(self):
++    """Servicio de muestras de laboratorio.
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``registrar_muestra`` requiere rol ``asistente`` o superior.
++        - ``actualizar_estado`` requiere rol ``veterinario`` (es una
++          acción clínica: cambiar estado / cargar resultados).
++        - Lectura (``obtener_muestra``, ``listar_muestras``,
++          ``obtener_pendientes``, ``obtener_urgentes``) solo requiere
++          usuario autenticado.
++        - ``generar_codigo`` consume el contador atómico (igual que
++          antes) — no requiere rol especial pero sí autenticación.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.muestra_repo = MuestraRepository()
+         self.animal_repo = AnimalRepository()
+         self.db_manager = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def obtener_muestra(self, muestra_id: int) -> Muestra:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.muestra_repo.get_by_id(muestra_id)
+ 
+     def registrar_muestra(self, data: Dict[str, Any]) -> Muestra:
++        # RBAC: requiere rol asistente o superior
++        self.authorizer.require_role('asistente')
++
+         try:
+             MuestraValidator.validate(data)
+             # Verifica que el paciente exista
+@@ -59,6 +79,10 @@ class MuestraService:
+     def actualizar_estado(self, muestra_id: int, estado: str,
+                           resultado: Optional[str] = None,
+                           valor_ref: Optional[str] = None) -> None:
++        # RBAC: requiere rol veterinario o superior (cargar resultados
++        # es una acción clínica)
++        self.authorizer.require_role('veterinario')
++
+         try:
+             if estado not in [
+                 'Pendiente',
+@@ -75,14 +99,22 @@ class MuestraService:
+             raise
+ 
+     def listar_muestras(self, filtros: Optional[Dict] = None) -> List[Muestra]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.muestra_repo.get_all(filtros)
+ 
+     def obtener_pendientes(self) -> List[Muestra]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.muestra_repo.get_all({'estado': 'Pendiente'})
+ 
+     def obtener_urgentes(self) -> List[Muestra]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.muestra_repo.get_all({'urgente': True})
+ 
+     def generar_codigo(self) -> str:
+         """Genera código correlativo de manera atómica para laboratorio."""
++        # RBAC: cualquier usuario autenticado puede generar (consumir)
++        self.authorizer.require_authenticated()
+         return self.db_manager.generar_codigo('LAB')
+diff --git a/services/pdf_service.py b/services/pdf_service.py
+index a5fc274..a8f4014 100644
+--- a/services/pdf_service.py
++++ b/services/pdf_service.py
+@@ -1,6 +1,12 @@
+ # services/pdf_service.py
+ """
+ Fachada unificada para generación de PDFs — ISALAB.
++
++Fase 3 (issue C1 — RBAC bypass):
++    Toda generación de PDF requiere rol ``asistente`` o superior.
++    Cualquier usuario autenticado puede generar reportes (no se
++    requiere rol clínico), pero se exige autenticación para evitar
++    generación anónima desde procesos externos.
+ """
+ 
+ import os
+@@ -8,6 +14,7 @@ import json
+ from typing import Optional, Dict, List, Any
+ 
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+@@ -15,6 +22,13 @@ logger = setup_logger()
+ class PDFService:
+     """Fachada que unifica todos los generadores de reporte."""
+ 
++    def __init__(self, usuario_actual: Optional[dict] = None):
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        """Cualquier usuario autenticado puede generar PDFs (asistente+)."""
++        self.authorizer.require_role('asistente')
++
+     # ── Muestra (Compatibilidad con muestra_dialog.py) ──────────────────
+ 
+     def generar_reporte_muestra(self, muestra) -> str:
+@@ -23,6 +37,7 @@ class PDFService:
+         Detecta automáticamente si es empresa o persona natural.
+         Retorna la ruta del archivo generado.
+         """
++        self._check_perm()
+         from services.report_laboratorio import ReporteLaboratorioService
+ 
+         svc = ReporteLaboratorioService()
+@@ -64,6 +79,7 @@ class PDFService:
+         es_empresa: bool = False,
+         datos_empresa: Optional[Dict[str, str]] = None,
+     ) -> bytes:
++        self._check_perm()
+         from services.report_laboratorio import ReporteLaboratorioService
+         svc = ReporteLaboratorioService()
+         return svc.generar_pdf(
+@@ -81,6 +97,7 @@ class PDFService:
+         es_empresa: bool = False,
+         datos_empresa: Optional[Dict[str, str]] = None,
+     ) -> str:
++        self._check_perm()
+         from services.report_laboratorio import ReporteLaboratorioService
+         svc = ReporteLaboratorioService()
+         return svc.generar_y_guardar(
+@@ -94,11 +111,13 @@ class PDFService:
+     # ── Vacunación ───────────────────────────────────────────────────────
+ 
+     def generar_vacunacion(self, vacunacion_id: int) -> bytes:
++        self._check_perm()
+         from services.report_vacunacion import ReporteVacunacionService
+         svc = ReporteVacunacionService()
+         return svc.generar_pdf(vacunacion_id)
+ 
+     def guardar_vacunacion(self, vacunacion_id: int, ruta_salida: str) -> str:
++        self._check_perm()
+         from services.report_vacunacion import ReporteVacunacionService
+         svc = ReporteVacunacionService()
+         return svc.generar_y_guardar(vacunacion_id, ruta_salida)
+@@ -111,6 +130,7 @@ class PDFService:
+         incluir_consultas: bool = True,
+         incluir_vacunas: bool = False,
+     ) -> bytes:
++        self._check_perm()
+         from services.report_historia_clinica import ReporteHistoriaClinicaService
+         svc = ReporteHistoriaClinicaService()
+         return svc.generar_pdf(historia_id, incluir_consultas, incluir_vacunas)
+@@ -122,6 +142,7 @@ class PDFService:
+         incluir_consultas: bool = True,
+         incluir_vacunas: bool = False,
+     ) -> str:
++        self._check_perm()
+         from services.report_historia_clinica import ReporteHistoriaClinicaService
+         svc = ReporteHistoriaClinicaService()
+         return svc.generar_y_guardar(
+@@ -135,6 +156,7 @@ class PDFService:
+         cirugia_id: int,
+         datos_adicionales: Optional[Dict[str, Any]] = None,
+     ) -> bytes:
++        self._check_perm()
+         from services.report_cirugia import ReporteCirugiaService
+         svc = ReporteCirugiaService()
+         return svc.generar_pdf(cirugia_id, datos_adicionales)
+@@ -145,6 +167,7 @@ class PDFService:
+         ruta_salida: str,
+         datos_adicionales: Optional[Dict[str, Any]] = None,
+     ) -> str:
++        self._check_perm()
+         from services.report_cirugia import ReporteCirugiaService
+         svc = ReporteCirugiaService()
+         return svc.generar_y_guardar(
+@@ -157,6 +180,7 @@ class PDFService:
+         consulta_obj,
+     ) -> bytes:
+         """Genera PDF de una consulta ambulatoria."""
++        self._check_perm()
+         from services.report_consulta import ReporteConsultaService
+         svc = ReporteConsultaService()
+         return svc.generar_pdf(consulta_obj)
+@@ -166,6 +190,7 @@ class PDFService:
+         consulta_id: int,
+         ruta_salida: str,
+     ) -> str:
++        self._check_perm()
+         from services.report_consulta import ReporteConsultaService
+         svc = ReporteConsultaService()
+         return svc.generar_y_guardar(consulta_id, ruta_salida)
+@@ -177,6 +202,7 @@ class PDFService:
+         datos: Dict[str, Any],
+     ) -> bytes:
+         """Genera PDF de un recibo de pago."""
++        self._check_perm()
+         from services.report_recibo import ReporteReciboService
+         svc = ReporteReciboService()
+         return svc.generar_pdf(datos)
+@@ -186,6 +212,7 @@ class PDFService:
+         datos: Dict[str, Any],
+         ruta_salida: str,
+     ) -> str:
++        self._check_perm()
+         from services.report_recibo import ReporteReciboService
+         svc = ReporteReciboService()
+         return svc.generar_y_guardar(datos, ruta_salida)
+diff --git a/services/recepcion_service.py b/services/recepcion_service.py
+index abd6238..1854e81 100644
+--- a/services/recepcion_service.py
++++ b/services/recepcion_service.py
+@@ -2,39 +2,73 @@
+ """Lógica de negocio — Recepción de pacientes (ISAL-XXXX)"""
+ 
+ from datetime import datetime
+-from typing import List
++from typing import List, Optional
+ 
+ from database.repositories import RecepcionRepository, AnimalRepository
++from database.connection import DatabaseManager
+ from database.models import Recepcion
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ from schemas.clinica import RecepcionSchema
+-from pydantic import ValidationError
++from pydantic import ValidationError as PydanticValidationError
+ from utils.exceptions import BusinessLogicError
+ 
+ logger = setup_logger()
+ 
+ 
+ class RecepcionService:
+-    def __init__(self):
++    """Servicio de recepción de pacientes.
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``__init__`` acepta ``usuario_actual`` (opcional) y construye
++          ``self.authorizer``. Si ``usuario_actual`` es ``None``, cae
++          al thread-local ``get_current_user()`` (seteado por
++          ``main.py`` tras el login).
++        - Las operaciones de escritura (``registrar_recepcion``,
++          ``actualizar_estado``) requieren rol ``asistente``.
++        - Las operaciones de lectura (``obtener_recepcion``,
++          ``listar_recepciones``, etc.) solo requieren usuario
++          autenticado.
++
++    Fase 3 (issue C2 — colisión ISAL-0001):
++        - ``generar_codigo`` ahora usa ``DatabaseManager.generar_codigo(
++          'ISAL')`` que hace el ``UPDATE contador SET ultimo = ultimo +
++          1`` atómicamente. Antes, solo leía el contador sin
++          incrementarlo, por lo que cada ``registrar_recepcion``
++          producía ``ISAL-0001`` y chocaba con la UNIQUE constraint.
++        - ``registrar_recepcion`` ya no llama a ``generar_codigo()``
++          dos veces: si ``data['codigo']`` viene vacío, lo genera una
++          vez (atómico) y lo conserva.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.repo = RecepcionRepository()
+         self.animal_repo = AnimalRepository()
++        self.db = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     # ── Código ────────────────────────────────────────────────────────────
+     def generar_codigo(self) -> str:
+-        """Retorna el próximo código ISAL-XXXX sin consumirlo (vista previa)."""
+-        # Consultamos el último sin incrementar para mostrar en el formulario;
+-        # el incremento real ocurre en registrar_recepcion().
+-        from database.connection import DatabaseManager
+-        db = DatabaseManager()
+-        row = db.fetch_one(
+-            "SELECT ultimo FROM codigo_contadores WHERE prefijo = ?", ('ISAL',))
+-        siguiente = (row['ultimo'] + 1) if row else 1
+-        return f"ISAL-{siguiente:04d}"
++        """Genera el siguiente código ISAL-XXXX atómicamente.
++
++        Fase 3 (issue C2): antes era preview-only (no incrementaba),
++        causando que cada ``registrar_recepcion`` chocara con la
++        UNIQUE constraint en ``recepciones.codigo``. Ahora consume un
++        número del contador de forma atómica, igual que los demás
++        servicios (MuestraService.generar_codigo, etc.).
++        """
++        return self.db.generar_codigo('ISAL')
+ 
+     # ── CRUD ──────────────────────────────────────────────────────────────
+     def registrar_recepcion(self, data: dict):
++        # RBAC: requiere rol asistente o superior
++        self.authorizer.require_role('asistente')
++
+         try:
+-            # Generar código automáticamente si no se proporciona
++            # Generar código automáticamente si no se proporciona.
++            # Fase 3 (issue C2): el código se consume atómicamente aquí,
++            # una sola vez. Antes, ``generar_codigo()`` era preview-only
++            # y ``registrar_recepcion`` tampoco incrementaba → colisión.
+             if not data.get('codigo'):
+                 data['codigo'] = self.generar_codigo()
+ 
+@@ -55,7 +89,7 @@ class RecepcionService:
+             )
+             return self.repo.create(recepcion)
+ 
+-        except ValidationError as e:
++        except PydanticValidationError as e:
+             # Formateamos el error para que la interfaz lo muestre bonito
+             error_msg = "\n".join(
+                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+@@ -63,24 +97,34 @@ class RecepcionService:
+                 f"Datos inválidos en recepción:\n{error_msg}")
+ 
+     def obtener_recepcion(self, rid: int) -> Recepcion:
++        # RBAC: cualquier usuario autenticado puede consultar
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_id(rid)
+ 
+     def listar_recepciones(self, filtros: dict = None) -> List[Recepcion]:
++        # RBAC: cualquier usuario autenticado puede listar
++        self.authorizer.require_authenticated()
+         return self.repo.get_all(filtros)
+ 
+     def historial_paciente(self, animal_id: int) -> List[Recepcion]:
++        # RBAC: cualquier usuario autenticado puede consultar
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_animal(animal_id)
+ 
+     def actualizar_estado(self, rid: int, estado: str,
+                           proxima_cita: str = None) -> None:
++        # RBAC: requiere rol asistente o superior
++        self.authorizer.require_role('asistente')
+         self.repo.get_by_id(rid)   # valida existencia
+         self.repo.update_estado(rid, estado, proxima_cita)
+         logger.info(f"Recepción {rid} → estado: {estado}")
+ 
+     def recepciones_hoy(self) -> List[Recepcion]:
++        # RBAC: cualquier usuario autenticado puede consultar
++        self.authorizer.require_authenticated()
+         hoy = datetime.now().strftime('%Y-%m-%d')
+         todas = self.repo.get_all()
+-        return [r for r in todas if r.fecha_hora.startswith(hoy)]
++        return [r for r in todas if r.fecha_hora and r.fecha_hora.startswith(hoy)]
+ 
+     # ── Validación ────────────────────────────────────────────────────────
+     def _validar(self, data: dict) -> None:
+@@ -90,6 +134,5 @@ class RecepcionService:
+         if not data.get('motivo', '').strip():
+             errores.append("El motivo de consulta es obligatorio")
+         if errores:
+-            raise ValidationError(
+-                "Datos de recepción inválidos", {
+-                    'errores': errores})
++            raise BusinessLogicError(
++                f"Datos de recepción inválidos: {'; '.join(errores)}")
+diff --git a/services/report_cirugia.py b/services/report_cirugia.py
+index e12c07d..461549b 100644
+--- a/services/report_cirugia.py
++++ b/services/report_cirugia.py
+@@ -21,18 +21,27 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteCirugiaService:
+-    """Genera PDFs de informes quirúrgicos."""
++    """Genera PDFs de informes quirúrgicos.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.cirugia_repo = CirugiaRepository()
+         self.animal_repo = AnimalRepository()
+         self.historia_repo = HistoriaClinicaRepository()
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -41,6 +50,7 @@ class ReporteCirugiaService:
+         cirugia_id: int,
+         datos_adicionales: Optional[Dict[str, Any]] = None,
+     ) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(cirugia_id, datos_adicionales)
+         return generar_reporte("cirugia", contexto)
+ 
+@@ -50,6 +60,7 @@ class ReporteCirugiaService:
+         ruta_salida: str,
+         datos_adicionales: Optional[Dict[str, Any]] = None,
+     ) -> str:
++        self._check_perm()
+         contexto = self._construir_contexto(cirugia_id, datos_adicionales)
+         return generar_por_tipo("cirugia", contexto, ruta_salida)
+ 
+diff --git a/services/report_consentimiento.py b/services/report_consentimiento.py
+index e13dbb0..e99fba6 100644
+--- a/services/report_consentimiento.py
++++ b/services/report_consentimiento.py
+@@ -1,7 +1,7 @@
+ # services/report_consentimiento.py
+ """Puente para generar consentimientos informados."""
+ 
+-from typing import Dict, Any
++from typing import Optional, Dict, Any
+ 
+ from reports import (
+     generar_reporte,
+@@ -14,15 +14,24 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteConsentimientoService:
+-    """Genera PDFs de consentimientos informados."""
++    """Genera PDFs de consentimientos informados.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -30,6 +39,7 @@ class ReporteConsentimientoService:
+         self,
+         consentimiento_data: Dict[str, Any],
+     ) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(consentimiento_data)
+         return generar_reporte("consentimiento_informado", contexto)
+ 
+@@ -38,6 +48,7 @@ class ReporteConsentimientoService:
+         consentimiento_data: Dict[str, Any],
+         ruta_salida: str,
+     ) -> str:
++        self._check_perm()
+         contexto = self._construir_contexto(consentimiento_data)
+         return generar_por_tipo(
+             "consentimiento_informado",
+diff --git a/services/report_consulta.py b/services/report_consulta.py
+index 4e76711..3260807 100644
+--- a/services/report_consulta.py
++++ b/services/report_consulta.py
+@@ -1,7 +1,7 @@
+ # services/report_consulta.py
+ """Puente ORM → ReporteBase para consultas ambulatorias."""
+ 
+-from typing import Dict, Any
++from typing import Optional, Dict, Any
+ 
+ from database.repositories import (
+     ConsultaRepository,
+@@ -19,17 +19,26 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteConsultaService:
+-    """Genera PDFs de consultas ambulatorias."""
++    """Genera PDFs de consultas ambulatorias.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.consulta_repo = ConsultaRepository()
+         self.animal_repo = AnimalRepository()
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -37,6 +46,7 @@ class ReporteConsultaService:
+         self,
+         consulta_obj,
+     ) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(consulta_obj)
+         return generar_reporte("consulta", contexto)
+ 
+@@ -45,6 +55,7 @@ class ReporteConsultaService:
+         consulta_id: int,
+         ruta_salida: str,
+     ) -> str:
++        self._check_perm()
+         consulta = self.consulta_repo.get_by_id(consulta_id)
+         contexto = self._construir_contexto(consulta)
+         return generar_por_tipo("consulta", contexto, ruta_salida)
+diff --git a/services/report_formula_medica.py b/services/report_formula_medica.py
+index ef1fbab..32f7257 100644
+--- a/services/report_formula_medica.py
++++ b/services/report_formula_medica.py
+@@ -1,7 +1,7 @@
+ # services/report_formula_medica.py
+ """Puente para generar fórmulas médicas."""
+ 
+-from typing import Dict, Any
++from typing import Optional, Dict, Any
+ 
+ from reports import (
+     generar_reporte,
+@@ -14,15 +14,24 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteFormulaMedicaService:
+-    """Genera PDFs de fórmulas médicas."""
++    """Genera PDFs de fórmulas médicas.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -30,6 +39,7 @@ class ReporteFormulaMedicaService:
+         self,
+         formula_data: Dict[str, Any],
+     ) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(formula_data)
+         return generar_reporte("formula_medica", contexto)
+ 
+@@ -38,6 +48,7 @@ class ReporteFormulaMedicaService:
+         formula_data: Dict[str, Any],
+         ruta_salida: str,
+     ) -> str:
++        self._check_perm()
+         contexto = self._construir_contexto(formula_data)
+         return generar_por_tipo("formula_medica", contexto, ruta_salida)
+ 
+diff --git a/services/report_historia_clinica.py b/services/report_historia_clinica.py
+index b971440..b203978 100644
+--- a/services/report_historia_clinica.py
++++ b/services/report_historia_clinica.py
+@@ -22,19 +22,28 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteHistoriaClinicaService:
+-    """Genera PDFs de historia clínica completa (con consultas de seguimiento)."""
++    """Genera PDFs de historia clínica completa (con consultas de seguimiento).
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.historia_repo = HistoriaClinicaRepository()
+         self.animal_repo = AnimalRepository()
+         self.consulta_repo = ConsultaRepository()
+         self.vacuna_repo = VacunacionRepository()
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -44,6 +53,7 @@ class ReporteHistoriaClinicaService:
+         incluir_consultas: bool = True,
+         incluir_vacunas: bool = False,
+     ) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(
+             historia_id, incluir_consultas, incluir_vacunas
+         )
+@@ -56,6 +66,7 @@ class ReporteHistoriaClinicaService:
+         incluir_consultas: bool = True,
+         incluir_vacunas: bool = False,
+     ) -> str:
++        self._check_perm()
+         contexto = self._construir_contexto(
+             historia_id, incluir_consultas, incluir_vacunas
+         )
+diff --git a/services/report_laboratorio.py b/services/report_laboratorio.py
+index b2354aa..85eadd3 100644
+--- a/services/report_laboratorio.py
++++ b/services/report_laboratorio.py
+@@ -21,17 +21,29 @@ from reports import (
+     ColoresMarca, ConfiguracionReporte, Margenes,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteLaboratorioService:
+-    """Genera PDFs de resultados de laboratorio (persona natural y empresa)."""
+-
+-    def __init__(self):
+-        self.muestra_svc = MuestraService()
+-        self.animal_svc = AnimalService()
++    """Genera PDFs de resultados de laboratorio (persona natural y empresa).
++
++    Fase 3 (issue C1 — RBAC bypass):
++        Toda generación de PDF requiere rol ``asistente`` o superior.
++        Cualquier usuario autenticado puede generar reportes (no se
++        requiere rol clínico), pero se exige autenticación para evitar
++        generación anónima desde procesos externos.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
++        self.muestra_svc = MuestraService(usuario_actual)
++        self.animal_svc = AnimalService(usuario_actual)
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -43,6 +55,7 @@ class ReporteLaboratorioService:
+             datos_empresa: Optional[Dict[str, str]] = None,
+     ) -> bytes:
+         """Retorna los bytes del PDF listo para streaming / descarga."""
++        self._check_perm()
+         contexto = self._construir_contexto(
+             muestra_id, resultados_estructurados, es_empresa, datos_empresa
+         )
+@@ -59,6 +72,7 @@ class ReporteLaboratorioService:
+         datos_empresa: Optional[Dict[str, str]] = None,
+     ) -> bytes:
+         """Genera el PDF y lo guarda en disco. Retorna la ruta."""
++        self._check_perm()
+         contexto = self._construir_contexto(
+             muestra_id, resultados_estructurados, es_empresa, datos_empresa
+         )
+diff --git a/services/report_service.py b/services/report_service.py
+index 69577cb..8a24d09 100644
+--- a/services/report_service.py
++++ b/services/report_service.py
+@@ -1,14 +1,26 @@
+ # services/report_service.py (si no lo tienes)
++"""
++Dashboard y métricas — ISALAB.
++
++Fase 3 (issue C1 — RBAC bypass): las operaciones de lectura de
++estadísticas solo requieren usuario autenticado.
++"""
+ from database.connection import DatabaseManager
+ from datetime import datetime, timedelta
++from typing import Optional
++from utils.security import Authorizer
+ 
+ 
+ class ReportService:
+-    def __init__(self):
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.db = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def get_dashboard_stats(self):
+         """Obtiene estadísticas para el dashboard"""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
++
+         stats = {}
+ 
+         # Animales activos
+@@ -56,6 +68,9 @@ class ReportService:
+ 
+     def get_efficiency_metrics(self):
+         """Obtiene métricas de eficiencia"""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
++
+         metrics = {}
+ 
+         # Tasa de cumplimiento
+@@ -83,6 +98,9 @@ class ReportService:
+ 
+     def get_reporte_muestras(self, fecha_inicio, fecha_fin):
+         """Obtiene reporte detallado de muestras"""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
++
+         query = """
+             SELECT m.*, a.nombre as animal_nombre, a.codigo as animal_codigo
+             FROM muestras m
+diff --git a/services/report_vacunacion.py b/services/report_vacunacion.py
+index 846036c..9e56f52 100644
+--- a/services/report_vacunacion.py
++++ b/services/report_vacunacion.py
+@@ -16,27 +16,38 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteVacunacionService:
+-    """Genera PDFs de certificados de vacunación / desparasitación."""
++    """Genera PDFs de certificados de vacunación / desparasitación.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.vacuna_repo = VacunacionRepository()
+         self.animal_repo = AnimalRepository()
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+     def generar_pdf(self, vacunacion_id: int) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(vacunacion_id)
+         return generar_reporte("vacunacion", contexto)
+ 
+     def generar_y_guardar(
+         self, vacunacion_id: int, ruta_salida: str
+     ) -> str:
++        self._check_perm()
+         contexto = self._construir_contexto(vacunacion_id)
+         return generar_por_tipo("vacunacion", contexto, ruta_salida)
+ 
+diff --git a/services/usuario_service.py b/services/usuario_service.py
+index f1a2aa6..7427eb3 100644
+--- a/services/usuario_service.py
++++ b/services/usuario_service.py
+@@ -10,7 +10,7 @@ from utils.security import (
+     verify_password,
+     validar_fortaleza_password,
+     Authorizer,
+-    PermissionError,
++    PermissionDeniedError,
+     generar_password_temporal,
+     necesita_migracion,
+ )
+@@ -152,7 +152,7 @@ class UsuarioService:
+         """
+         row = self.db.fetch_one("SELECT COUNT(*) as total FROM usuarios")
+         if row and row['total'] > 0:
+-            raise PermissionError(
++            raise PermissionDeniedError(
+                 "Ya existen usuarios en el sistema. Use crear_usuario() con permisos de admin."
+             )
+ 
+@@ -239,7 +239,7 @@ class UsuarioService:
+                 "SELECT COUNT(*) as total FROM usuarios WHERE rol = 'admin' AND activo = 1"
+             )
+             if total_admins and total_admins['total'] <= 1:
+-                raise PermissionError(
++                raise PermissionDeniedError(
+                     "No se puede desactivar el último administrador")
+ 
+         self.db.execute(
+diff --git a/services/vacuna_service.py b/services/vacuna_service.py
+index 601da41..fd81ecc 100644
+--- a/services/vacuna_service.py
++++ b/services/vacuna_service.py
+@@ -1,30 +1,45 @@
+ # services/vacuna_service.py
+ """Lógica de negocio — Vacunación y Desparasitación (VAC-XXXX)"""
+ 
+-from typing import List, Dict, Any
++from typing import List, Dict, Any, Optional
+ 
+ from database.repositories import VacunacionRepository
+ from database.connection import DatabaseManager
+ from database.models import Vacunacion
+-from pydantic import ValidationError
++from pydantic import ValidationError as PydanticValidationError
+ 
+ from schemas.clinica import VacunacionSchema
+ from utils.exceptions import BusinessLogicError
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class VacunaService:
+-    def __init__(self):
++    """Servicio de vacunación y desparasitación.
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``registrar`` requiere rol ``veterinario`` o superior (es
++          una acción clínica).
++        - Lectura solo requiere usuario autenticado.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.repo = VacunacionRepository()
+         self.db_manager = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def generar_codigo(self) -> str:
+         """Genera código correlativo de manera atómica."""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.db_manager.generar_codigo('VAC')
+ 
+     def registrar(self, data: Dict[str, Any]) -> Vacunacion:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
++
+         try:
+             # Generar código automáticamente si no se proporciona
+             if not data.get('codigo'):
+@@ -49,40 +64,33 @@ class VacunaService:
+             logger.info(f"Vacunación registrada: {vacunacion.codigo}")
+             return vacunacion
+ 
+-        except ValidationError as e:
++        except PydanticValidationError as e:
+             error_msg = "\n".join(
+                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+             logger.error(f"Error Pydantic en vacunación: {error_msg}")
+             raise BusinessLogicError(
+-                f"Datos inválidos en la vacunación:\n{error_msg}")
++                f"Datos inválidos en vacunación:\n{error_msg}")
+         except Exception as e:
+             logger.error(f"Error inesperado en registrar_vacunacion: {e}")
+             raise
+ 
+     def obtener(self, vid: int) -> Vacunacion:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_id(vid)
+ 
+     def listar(self, filtros: dict = None) -> List[Vacunacion]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_all(filtros)
+ 
+     def por_paciente(self, animal_id: int) -> List[Vacunacion]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_animal(animal_id)
+ 
+     def proximas_a_vencer(self, dias: int = 30) -> List[Vacunacion]:
+         """Vacunas/desparasitaciones que vencen en los próximos `dias` días."""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_proximas(dias)
+-
+-    def _validar(self, data: dict) -> None:
+-        errores = []
+-        if not data.get('animal_id'):
+-            errores.append("Debe seleccionar un paciente")
+-        if not data.get('tipo') in ('Vacuna', 'Desparasitación'):
+-            errores.append("El tipo debe ser 'Vacuna' o 'Desparasitación'")
+-        if not data.get('producto', '').strip():
+-            errores.append("El nombre del producto es obligatorio")
+-        if not data.get('fecha_aplicacion'):
+-            errores.append("La fecha de aplicación es obligatoria")
+-        if errores:
+-            raise ValidationError(
+-                "Datos de vacunación inválidos", {
+-                    'errores': errores})
+diff --git a/tests/test_fase3_security.py b/tests/test_fase3_security.py
+new file mode 100644
+index 0000000..ee1f568
+--- /dev/null
++++ b/tests/test_fase3_security.py
+@@ -0,0 +1,536 @@
++"""
++Tests de regresión para Fase 3 — Fix CRITICAL de seguridad.
++
++Cubre los 4 issues CRITICAL del análisis (Task 4 — services & security):
++
++- C1: RBAC burlado — Authorizer solo cableado en UsuarioService.
++  Tras Fase 3, todos los servicios cablean Authorizer y las operaciones
++  de escritura requieren rol mínimo.
++
++- C2: RecepcionService.generar_codigo no incrementaba el contador →
++  colisión ISAL-0001 con UNIQUE constraint. Tras Fase 3, usa
++  ``DatabaseManager.generar_codigo('ISAL')`` atómico.
++
++- C3: reports/generators.py construía Jinja2 ``Environment`` SIN
++  ``autoescape``, permitiendo HTML injection / WeasyPrint SSRF. Tras
++  Fase 3, ``autoescape=select_autoescape(...)`` + ``url_fetcher``
++  sandboxed que bloquea http(s)://, ftp://, data: y file:// fuera
++  del sandbox.
++
++- C4: ``PermissionError(Exception)`` en ``utils/security.py`` shadow
++  del builtin de Python. Tras Fase 3, se renombra a
++  ``PermissionDeniedError(IsaLabException)`` y se mantiene alias
++  deprecated.
++
++Estos tests NO requieren DB real ni QApplication — usan mocks y
++fixtures temporales.
++"""
++from __future__ import annotations
++
++import os
++import sys
++import tempfile
++from pathlib import Path
++from unittest.mock import MagicMock, patch
++
++import pytest
++
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++if str(REPO_ROOT) not in sys.path:
++    sys.path.insert(0, str(REPO_ROOT))
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# Helpers
++# ─────────────────────────────────────────────────────────────────────────────
++
++def _setup_test_db(tmp_path: Path) -> None:
++    """Crea las tablas mínimas en la DB de test de sesión.
++
++    Usa ``config.DB_PATH`` (que el conftest ya aisló a una ruta
++    temporal a nivel sesión). Crea las tablas clínicas mínimas
++    que el singleton ``DatabaseManager`` no crea por sí solo
++    (las delega a Alembic en producción).
++    """
++    from config import DB_PATH
++
++    # Asegurar que el singleton esté inicializado (crea codigo_contadores
++    # y usuarios, que el test de RBAC de usuarios puede necesitar).
++    from database.connection import DatabaseManager
++    DatabaseManager()
++
++    # Añadir las tablas clínicas mínimas para los tests
++    import sqlite3
++    conn = sqlite3.connect(str(DB_PATH))
++    cur = conn.cursor()
++
++    cur.execute("""
++        CREATE TABLE IF NOT EXISTS recepciones (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            codigo TEXT UNIQUE NOT NULL,
++            animal_id INTEGER NOT NULL,
++            fecha_hora TEXT NOT NULL,
++            motivo TEXT,
++            veterinario TEXT,
++            estado TEXT DEFAULT 'Pendiente',
++            proxima_cita TEXT,
++            observaciones TEXT
++        )
++    """)
++
++    cur.execute("""
++        CREATE TABLE IF NOT EXISTS animales (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            codigo TEXT UNIQUE NOT NULL,
++            nombre TEXT,
++            especie TEXT,
++            raza TEXT,
++            edad TEXT,
++            propietario TEXT,
++            telefono TEXT,
++            email TEXT,
++            fecha_ingreso TEXT,
++            estado TEXT DEFAULT 'Activo',
++            observaciones TEXT
++        )
++    """)
++
++    conn.commit()
++    conn.close()
++
++    # Resetear el singleton para que la siguiente operación pique la
++    # nueva conexión con las tablas nuevas (sqlite3 cachea la conexión
++    # en thread-local).
++    DatabaseManager._instance = None
++    DatabaseManager()
++
++
++@pytest.fixture
++def clean_current_user():
++    """Limpia el usuario thread-local antes y después de cada test."""
++    from utils.security import clear_current_user, get_current_user
++    clear_current_user()
++    assert get_current_user() is None
++    yield
++    clear_current_user()
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C4 — PermissionError rename
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_C4_permission_denied_error_does_not_shadow_builtin():
++    """
++    Issue C4: ``utils.security.PermissionError`` no debe shadow el
++    builtin de Python.
++
++    Antes: ``from utils.security import PermissionError`` reemplazaba
++    el acceso al builtin en cualquier módulo que importara el archivo.
++
++    Ahora: ``PermissionDeniedError`` es la clase canónica, y
++    ``PermissionError`` es un alias deprecated que apunta a la misma
++    clase (mantenido por compat). El builtin
++    ``PermissionError`` (que es ``OSError`` subclass) sigue accesible
++    vía ``builtins.PermissionError``.
++    """
++    import builtins
++    from utils.security import PermissionDeniedError, PermissionError as SecPermError
++    from utils.exceptions import IsaLabException
++
++    # La clase canónica existe y hereda de IsaLabException
++    assert issubclass(PermissionDeniedError, IsaLabException)
++    assert issubclass(PermissionDeniedError, Exception)
++
++    # El alias deprecated apunta a la misma clase
++    assert SecPermError is PermissionDeniedError
++
++    # El builtin sigue siendo el de Python (subclass de OSError)
++    assert builtins.PermissionError is not PermissionDeniedError
++    assert issubclass(builtins.PermissionError, OSError)
++    assert not issubclass(builtins.PermissionError, IsaLabException)
++
++    # Podemos levantar y atrapar ambos independientemente
++    try:
++        raise PermissionDeniedError("denied")
++    except PermissionDeniedError as e:
++        assert "denied" in str(e)
++    except builtins.PermissionError:  # pragma: no cover
++        pytest.fail("PermissionDeniedError fue atrapado como builtin — shadow no resuelto")
++
++    # Y el builtin sigue funcionando para errores OS-level
++    try:
++        # Simular un error OS-level (archivo sin permiso)
++        raise builtins.PermissionError(13, "Permission denied")
++    except builtins.PermissionError as e:
++        assert e.errno == 13
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C1 — RBAC bypass
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_C1_anonymous_user_cannot_register_animal(clean_current_user, tmp_path):
++    """
++    Issue C1: sin usuario autenticado, ``AnimalService.registrar_ingreso``
++    debe levantar ``PermissionDeniedError``.
++
++    Antes: cualquier proceso podía instanciar ``AnimalService()`` y
++    registrar animales sin autenticación.
++    """
++    _setup_test_db(tmp_path)
++    from services.animal_service import AnimalService
++    from utils.security import PermissionDeniedError
++
++    svc = AnimalService()  # sin usuario_actual → anónimo
++
++    with pytest.raises(PermissionDeniedError):
++        svc.registrar_ingreso({
++            'codigo': 'PAC-TEST',
++            'nombre': 'Test',
++            'especie': 'Test',
++            'fecha_ingreso': '2026-01-01',
++        })
++
++
++def test_C1_asistente_can_register_animal_but_not_consulta(clean_current_user, tmp_path):
++    """
++    Issue C1: rol ``asistente`` puede registrar animales (rol mínimo
++    ``asistente``) pero NO puede registrar consultas (rol mínimo
++    ``veterinario``).
++    """
++    _setup_test_db(tmp_path)
++    from services.animal_service import AnimalService
++    from services.consulta_service import ConsultaService
++    from utils.security import (
++        PermissionDeniedError,
++        set_current_user,
++    )
++
++    asistente = {
++        'id': 1,
++        'username': 'asistente1',
++        'rol': 'asistente',
++    }
++    set_current_user(asistente)
++
++    # Asistente SÍ puede llamar registrar_ingreso (mínimo: asistente)
++    # — el registro real puede fallar por validación Pydantic, pero
++    # NO debe fallar con PermissionDeniedError.
++    svc_animal = AnimalService()
++    try:
++        svc_animal.registrar_ingreso({
++            'codigo': 'PAC-X1',
++            'nombre': 'X',
++            'especie': 'Test',
++            'fecha_ingreso': '2026-01-01',
++        })
++    except PermissionDeniedError:
++        pytest.fail(
++            "asistente deberia poder registrar_ingreso — fallo de RBAC"
++        )
++    except Exception:
++        # Cualquier otro error (validación, DB, etc.) es OK para este
++        # test — lo que importa es que NO sea PermissionDeniedError.
++        pass
++
++    # Asistente NO puede registrar consultas (mínimo: veterinario)
++    svc_consulta = ConsultaService()
++    with pytest.raises(PermissionDeniedError):
++        svc_consulta.registrar_consulta({
++            'animal_id': 1,
++            'fecha': '2026-01-01',
++            'motivo': 'test',
++        })
++
++
++def test_C1_veterinario_can_register_consulta(clean_current_user, tmp_path):
++    """veterinario puede registrar consultas (rol mínimo: veterinario)."""
++    _setup_test_db(tmp_path)
++    from services.consulta_service import ConsultaService
++    from utils.security import (
++        PermissionDeniedError,
++        set_current_user,
++    )
++
++    vet = {'id': 2, 'username': 'vet1', 'rol': 'veterinario'}
++    set_current_user(vet)
++
++    svc = ConsultaService()
++    # No debe levantar PermissionDeniedError (puede fallar por
++    # validación o DB, pero no por permisos).
++    try:
++        svc.registrar_consulta({
++            'animal_id': 1,
++            'fecha': '2026-01-01',
++            'motivo': 'Consulta test',
++        })
++    except PermissionDeniedError:
++        pytest.fail("veterinario debería poder registrar_consulta")
++    except Exception:
++        pass
++
++
++def test_C1_admin_can_guardar_configuracion(clean_current_user, tmp_path):
++    """admin puede guardar_configuracion (rol mínimo: admin)."""
++    _setup_test_db(tmp_path)
++    from services.configuracion_service import ConfiguracionService
++    from utils.security import (
++        PermissionDeniedError,
++        set_current_user,
++    )
++
++    admin = {'id': 1, 'username': 'admin1', 'rol': 'admin'}
++    set_current_user(admin)
++
++    svc = ConfiguracionService()
++    # Debe poder guardar sin PermissionDeniedError
++    try:
++        svc.guardar_configuracion({'test': 'value'})
++    except PermissionDeniedError:
++        pytest.fail("admin debería poder guardar_configuracion")
++    except Exception:
++        pass
++
++    # Limpieza del archivo temporal
++    cfg_path = svc.config_path
++    if cfg_path.exists():
++        cfg_path.unlink()
++
++
++def test_C1_asistente_cannot_guardar_configuracion(clean_current_user, tmp_path):
++    """asistente NO puede guardar_configuracion (rol mínimo: admin)."""
++    _setup_test_db(tmp_path)
++    from services.configuracion_service import ConfiguracionService
++    from utils.security import (
++        PermissionDeniedError,
++        set_current_user,
++    )
++
++    asistente = {'id': 2, 'username': 'asistente1', 'rol': 'asistente'}
++    set_current_user(asistente)
++
++    svc = ConfiguracionService()
++    with pytest.raises(PermissionDeniedError):
++        svc.guardar_configuracion({'test': 'value'})
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C2 — RecepcionService.generar_codigo atómico
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_C2_generar_codigo_increments_counter(clean_current_user, tmp_path):
++    """
++    Issue C2: ``RecepcionService.generar_codigo`` debe INCREMENTAR el
++    contador cada vez que se llama (atómico).
++
++    Antes: era preview-only (solo SELECT sin UPDATE), por lo que cada
++    ``registrar_recepcion`` producía ``ISAL-0001`` y chocaba con la
++    UNIQUE constraint.
++    """
++    _setup_test_db(tmp_path)
++    from services.recepcion_service import RecepcionService
++    from utils.security import set_current_user
++
++    set_current_user({'id': 1, 'username': 'admin', 'rol': 'admin'})
++
++    svc = RecepcionService()
++
++    codigo1 = svc.generar_codigo()
++    codigo2 = svc.generar_codigo()
++    codigo3 = svc.generar_codigo()
++
++    assert codigo1 == "ISAL-0001", f"Esperado ISAL-0001, got {codigo1}"
++    assert codigo2 == "ISAL-0002", f"Esperado ISAL-0002, got {codigo2}"
++    assert codigo3 == "ISAL-0003", f"Esperado ISAL-0003, got {codigo3}"
++
++
++def test_C2_two_recepciones_do_not_collide(clean_current_user, tmp_path):
++    """
++    Issue C2 (regresión end-to-end): dos ``registrar_recepcion``
++    consecutivos deben producir códigos distintos y NO chocar con la
++    UNIQUE constraint de ``recepciones.codigo``.
++
++    Antes: ambos producían ``ISAL-0001`` y el segundo INSERT fallaba
++    con ``IntegrityError: UNIQUE constraint failed: recepciones.codigo``.
++    """
++    _setup_test_db(tmp_path)
++    from services.recepcion_service import RecepcionService
++    from utils.security import set_current_user
++
++    set_current_user({'id': 1, 'username': 'admin', 'rol': 'admin'})
++
++    svc = RecepcionService()
++
++    # Insertar un animal mínimo para que la FK de recepciones valide
++    import sqlite3
++    from config import DB_PATH
++    conn = sqlite3.connect(str(DB_PATH))
++    conn.execute(
++        "INSERT INTO animales (codigo, nombre, especie, fecha_ingreso, estado) "
++        "VALUES (?, ?, ?, ?, ?)",
++        ('PAC-T1', 'Test Animal', 'Test', '2026-01-01', 'Activo')
++    )
++    conn.commit()
++    conn.close()
++
++    # Reset singleton para que el service pique la conexión con la
++    # tabla animales ya creada.
++    from database.connection import DatabaseManager
++    DatabaseManager._instance = None
++
++    # Primera recepción
++    rec1_id = svc.registrar_recepcion({
++        'animal_id': 1,
++        'fecha_hora': '2026-01-01 10:00',
++        'motivo': 'Consulta 1',
++        'veterinario': 'Dr. Test',
++        'estado': 'Pendiente',
++    })
++
++    # Segunda recepción — antes chocaba con UNIQUE constraint
++    rec2_id = svc.registrar_recepcion({
++        'animal_id': 1,
++        'fecha_hora': '2026-01-01 11:00',
++        'motivo': 'Consulta 2',
++        'veterinario': 'Dr. Test',
++        'estado': 'Pendiente',
++    })
++
++    # Recuperar los códigos para verificar que son distintos
++    rec1 = svc.obtener_recepcion(rec1_id)
++    rec2 = svc.obtener_recepcion(rec2_id)
++    codigo1 = rec1.codigo
++    codigo2 = rec2.codigo
++
++    assert codigo1 != codigo2, (
++        f"Códigos deben ser distintos (colisión UNIQUE). "
++        f"recibido: {codigo1!r} == {codigo2!r}"
++    )
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C3 — Jinja2 autoescape + WeasyPrint sandbox
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_C3_generators_jinja_env_has_autoescape():
++    """
++    Issue C3: ``reports.generators._build_jinja_env`` debe construir un
++    ``Environment`` con ``autoescape`` activado para HTML/XML.
++
++    Antes: ``Environment(loader=...)`` sin autoescape → HTML injection
++    vía cualquier campo user-controlled (animal.nombre, diagnóstico,
++    observaciones, etc.).
++    """
++    from reports.generators import _build_jinja_env
++    from jinja2 import Environment
++    from jinja2.utils import select_autoescape
++
++    env = _build_jinja_env()
++    assert isinstance(env, Environment)
++
++    # autoescape debe estar activo (callable o bool True)
++    ae = env.autoescape
++    assert ae is not None and ae is not False, (
++        "autoescape debe estar activo en reports.generators._build_jinja_env"
++    )
++
++    # Verificar comportamiento: un string con HTML debe ser escapado
++    template = env.from_string("{{ nombre }}")
++    rendered = template.render(nombre="<script>alert('xss')</script>")
++    assert "<script>" not in rendered, (
++        f"HTML no escapado detectado: {rendered!r}"
++    )
++    assert "&lt;script&gt;" in rendered, (
++        f"Se esperaba HTML escapado, recibido: {rendered!r}"
++    )
++
++
++def test_C3_safe_url_fetcher_blocks_external_http():
++    """
++    Issue C3: el ``url_fetcher`` sandboxed debe RECHAZAR URLs
++    ``http(s)://`` externos. WeasyPrint los usaría para fetchear
++    CSS, imágenes, fuentes, etc. — riesgo de SSRF.
++    """
++    from reports.generators import _safe_url_fetcher
++
++    external_urls = [
++        "http://example.com/evil.css",
++        "https://attacker.com/exfil?data=x",
++        "ftp://ftp.example.com/file.txt",
++        "data:text/html,<script>alert(1)</script>",
++    ]
++
++    for url in external_urls:
++        with pytest.raises(ValueError, match="no permitid"):
++            _safe_url_fetcher(url)
++
++
++def test_C3_safe_url_fetcher_blocks_file_outside_sandbox(tmp_path):
++    """
++    Issue C3: ``file://`` fuera de ``TEMPLATES_DIR`` o ``BASE_DIR``
++    también debe ser rechazado (previene leer ``/etc/passwd`` o
++    archivos arbitrarios del filesystem).
++    """
++    from reports.generators import _safe_url_fetcher
++
++    # /etc/passwd es un archivo fuera del sandbox del proyecto
++    with pytest.raises(ValueError, match="fuera del sandbox|no permitid"):
++        _safe_url_fetcher("file:///etc/passwd")
++
++
++def test_C3_generar_reporte_with_malicious_context_escapes_html(tmp_path):
++    """
++    Issue C3 (regresión end-to-end): ``generar_reporte(template,
++    contexto)`` debe renderizar con autoescape, de modo que un campo
++    malicioso como ``<script>`` no aparezca literalmente en el HTML
++    antes de pasarse a WeasyPrint.
++
++    Hacemos mock de ``HTML.write_pdf`` para capturar el HTML
++    renderizado sin generar un PDF real.
++    """
++    from reports import generators
++
++    # Crear un template temporal con un placeholder
++    templates_dir = tmp_path / "templates"
++    templates_dir.mkdir()
++    template_file = templates_dir / "test_c3.html"
++    template_file.write_text(
++        "<html><body>{{ nombre }}</body></html>",
++        encoding="utf-8",
++    )
++
++    # Parchear TEMPLATES_DIR para que apunte al temporal
++    original_templates = generators.TEMPLATES_DIR
++    generators.TEMPLATES_DIR = templates_dir
++
++    captured_html = []
++
++    class FakeHTML:
++        def __init__(self, string=None, base_url=None, url_fetcher=None):
++            self.string = string
++            self.base_url = base_url
++            self.url_fetcher = url_fetcher
++            captured_html.append(string)
++
++        def write_pdf(self):
++            return b"%PDF-fake"
++
++    try:
++        with patch("reports.generators.HTML", FakeHTML):
++            from reports.generators import generar_reporte
++            generar_reporte(
++                "test_c3",
++                {"nombre": "<script>alert('xss')</script>"},
++            )
++
++        assert len(captured_html) == 1
++        html = captured_html[0]
++        assert "<script>alert('xss')</script>" not in html, (
++            f"HTML inyectado sin escapar en: {html!r}"
++        )
++        assert "&lt;script&gt;" in html, (
++            f"Se esperaba HTML escapado, recibido: {html!r}"
++        )
++    finally:
++        generators.TEMPLATES_DIR = original_templates
+diff --git a/utils/security.py b/utils/security.py
+index 5622801..37f9ed0 100644
+--- a/utils/security.py
++++ b/utils/security.py
+@@ -1,9 +1,10 @@
+ # utils/security.py
+-"""Módulo de seguridad para IsaLab - Funciones de autenticación y control de acceso"""
++"""Módulo de seguridad para IsaLab - Funciones de autenticación y control de acceso."""
+ 
+ import secrets
+ import string
+ import hashlib
++import threading
+ from typing import Optional, Callable
+ from functools import wraps
+ 
+@@ -13,11 +14,56 @@ try:
+ except ImportError:
+     BCRYPT_AVAILABLE = False
+ 
++from utils.exceptions import IsaLabException
+ from utils.logger import setup_logger
+ 
+ logger = setup_logger()
+ 
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# Registro thread-local del usuario actual (Fase 3 — issue C1 RBAC bypass)
++# ─────────────────────────────────────────────────────────────────────────────
++# Antes de Fase 3, ``Authorizer`` solo se cableaba en ``UsuarioService``; el
++# resto de servicios instanciaban ``Service()`` sin usuario, por lo que el
++# RBAC estaba efectivamente burlado. Para no tener que pasar
++# ``usuario_actual`` a cada ``Service()`` desde la GUI (9 vistas + 11
++# diálogos), usamos un registro thread-local: la GUI llama a
++# ``set_current_user(usuario)`` una vez tras el login y todos los servicios
++# lo recogen automáticamente vía ``Authorizer()``.
++#
++# Esto también da un valor por defecto seguro: si no hay usuario (tests,
++# invocación desde CLI, sesión caducada), ``Authorizer`` trata al llamador
++# como anónimo (rol='') y cualquier ``require_role`` levanta
++# ``PermissionDeniedError``.
++
++_current_user_ctx = threading.local()
++
++
++def set_current_user(user: Optional[dict]) -> None:
++    """Establece el usuario autenticado para el thread actual.
++
++    Debe llamarse tras un login exitoso (ver ``main.py``) y limpiarse al
++    cerrar sesión. Es thread-local, así que cada thread (incluyendo
++    workers de PDF) mantiene su propio contexto.
++    """
++    _current_user_ctx.user = user
++
++
++def get_current_user() -> Optional[dict]:
++    """Retorna el usuario del thread actual, o ``None`` si no hay sesión."""
++    return getattr(_current_user_ctx, 'user', None)
++
++
++def clear_current_user() -> None:
++    """Limpia el usuario del thread actual (logout)."""
++    if hasattr(_current_user_ctx, 'user'):
++        del _current_user_ctx.user
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# Hashing de contraseñas
++# ─────────────────────────────────────────────────────────────────────────────
++
+ def _generar_salt() -> str:
+     """Genera un salt aleatorio seguro."""
+     return secrets.token_hex(16)
+@@ -123,16 +169,48 @@ def validar_fortaleza_password(password: str) -> tuple[bool, str]:
+     return True, ""
+ 
+ 
+-class PermissionError(Exception):
+-    """Excepción para errores de permisos."""
++# ─────────────────────────────────────────────────────────────────────────────
++# Excepciones
++# ─────────────────────────────────────────────────────────────────────────────
++# Fase 3 — issue C4: ``PermissionError`` original era ``class
++# PermissionError(Exception)`` lo que SHADOWEABA el builtin de Python
++# (``PermissionError`` es una excepción estándar de Python para errores
++# OS-level tipo "permission denied" al abrir archivos). Cualquier módulo
++# que importara ``utils.security`` perdía acceso al builtin.
++#
++# Ahora la clase se llama ``PermissionDeniedError`` y hereda de
++# ``IsaLabException`` (consistencia con la jerarquía de excepciones del
++# proyecto). Se mantiene ``PermissionError`` como alias deprecated para
++# no romper imports externos.
++
++class PermissionDeniedError(IsaLabException):
++    """Acción denegada por falta de permisos (RBAC)."""
+ 
+ 
++# Alias deprecated — usar ``PermissionDeniedError`` en código nuevo.
++# Se mantiene para no romper imports externos que aún referencien
++# ``PermissionError`` desde ``utils.security``.
++PermissionError = PermissionDeniedError
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# Authorizer (RBAC)
++# ─────────────────────────────────────────────────────────────────────────────
++
+ class Authorizer:
+     """
+     Gestor de control de acceso basado en roles (RBAC).
+-    Uso:
+-        auth = Authorizer(usuario_actual)
+-        auth.require_role('admin')
++
++    Uso típico (servicio)::
++
++        self.authorizer = Authorizer(usuario_actual)
++        self.authorizer.require_role('admin')
++
++    Si ``usuario_actual`` es ``None``, el ``Authorizer`` cae al
++    registro thread-local ``get_current_user()`` (seteado por
++    ``main.py`` tras el login). Si tampoco hay usuario thread-local,
++    se comporta como anónimo (rol='') y cualquier ``require_role``
++    levanta ``PermissionDeniedError``.
+     """
+ 
+     ROLES_JERARQUIA = {
+@@ -143,6 +221,9 @@ class Authorizer:
+     }
+ 
+     def __init__(self, usuario_actual: Optional[dict] = None):
++        # Fallback al thread-local si no se pasa explícito.
++        if usuario_actual is None:
++            usuario_actual = get_current_user()
+         self.usuario_actual = usuario_actual or {}
+ 
+     def _get_nivel_rol(self, rol: str) -> int:
+@@ -150,7 +231,7 @@ class Authorizer:
+         return self.ROLES_JERARQUIA.get(rol, 0)
+ 
+     def tiene_rol(self, rol_requerido: str) -> bool:
+-        """Verifica si el usuario tiene el rol especificado."""
++        """Verifica si el usuario tiene el rol especificado (jerárquico)."""
+         rol_actual = self.usuario_actual.get('rol', '')
+         nivel_actual = self._get_nivel_rol(rol_actual)
+         nivel_requerido = self._get_nivel_rol(rol_requerido)
+@@ -160,30 +241,54 @@ class Authorizer:
+         """Verifica si el usuario es administrador."""
+         return self.tiene_rol('admin')
+ 
++    def esta_autenticado(self) -> bool:
++        """True si hay un usuario con id y rol no vacío."""
++        u = self.usuario_actual or {}
++        return bool(u.get('id') and u.get('rol'))
++
++    def require_authenticated(self) -> None:
++        """Exige que haya un usuario autenticado en el contexto."""
++        if not self.esta_autenticado():
++            raise PermissionDeniedError(
++                "Se requiere un usuario autenticado para esta acción."
++            )
++
+     def require_role(self, rol_requerido: str) -> None:
+         """
+         Verifica que el usuario tenga el rol requerido.
+-        Lanza PermissionError si no tiene permisos.
++        Lanza PermissionDeniedError si no tiene permisos.
+         """
++        if not self.esta_autenticado():
++            raise PermissionDeniedError(
++                "Se requiere un usuario autenticado para esta acción."
++            )
+         if not self.tiene_rol(rol_requerido):
+             logger.warning(
+                 f"Acceso denegado: usuario '{self.usuario_actual.get('username')}' "
+                 f"(rol: {self.usuario_actual.get('rol')}) intentó acceder a función "
+                 f"que requiere rol '{rol_requerido}'"
+             )
+-            raise PermissionError(
++            raise PermissionDeniedError(
+                 f"No tiene permisos para realizar esta acción. "
+                 f"Se requiere rol: {rol_requerido}"
+             )
+ 
+     def require_any_role(self, roles: list[str]) -> None:
+         """Verifica que el usuario tenga alguno de los roles especificados."""
++        if not self.esta_autenticado():
++            raise PermissionDeniedError(
++                "Se requiere un usuario autenticado para esta acción."
++            )
+         if not any(self.tiene_rol(r) for r in roles):
+-            raise PermissionError(
++            raise PermissionDeniedError(
+                 "No tiene permisos para realizar esta acción"
+             )
+ 
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# Decoradores de conveniencia
++# ─────────────────────────────────────────────────────────────────────────────
++
+ def decorador_requerir_admin(func: Callable) -> Callable:
+     """
+     Decorador para requerir rol admin en un método.
+@@ -196,7 +301,7 @@ def decorador_requerir_admin(func: Callable) -> Callable:
+     def wrapper(self, *args, **kwargs):
+         authorizer = getattr(self, 'authorizer', None)
+         if authorizer is None:
+-            raise PermissionError(
++            raise PermissionDeniedError(
+                 "El servicio no tiene authorizer configurado")
+         authorizer.require_role('admin')
+         return func(self, *args, **kwargs)
+@@ -210,7 +315,7 @@ def decorador_requerir_rol(rol: str) -> Callable:
+         def wrapper(self, *args, **kwargs):
+             authorizer = getattr(self, 'authorizer', None)
+             if authorizer is None:
+-                raise PermissionError(
++                raise PermissionDeniedError(
+                     "El servicio no tiene authorizer configurado")
+             authorizer.require_role(rol)
+             return func(self, *args, **kwargs)
+-- 
+2.47.3
+

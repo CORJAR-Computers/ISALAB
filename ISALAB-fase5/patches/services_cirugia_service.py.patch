@@ -1,0 +1,29 @@
+diff --git a/services/cirugia_service.py b/services/cirugia_service.py
+index 1cc3fe5..6369bfc 100644
+--- a/services/cirugia_service.py
++++ b/services/cirugia_service.py
+@@ -9,9 +9,10 @@ from database.models import Cirugia
+ from pydantic import ValidationError as PydanticValidationError
+ 
+ from schemas.clinica import CirugiaSchema
+-from utils.exceptions import BusinessLogicError
++from utils.exceptions import BusinessLogicError, ValidationError
+ from utils.logger import setup_logger
+ from utils.security import Authorizer
++from config import ESTADOS_CIRUGIA
+ 
+ logger = setup_logger()
+ 
+@@ -98,6 +99,12 @@ class CirugiaService:
+                           complicaciones: str = None) -> None:
+         # RBAC: requiere rol veterinario o superior
+         self.authorizer.require_role('veterinario')
++        # Fase 5 (H-S4): validar ``estado`` contra whitelist
++        # ``ESTADOS_CIRUGIA``. Antes se aceptaba CUALQUIER string.
++        if estado not in ESTADOS_CIRUGIA:
++            raise ValidationError(
++                f"Estado '{estado}' no válido. Estados permitidos: "
++                f"{', '.join(ESTADOS_CIRUGIA)}")
+         self.repo.get_by_id(cid)
+         self.repo.update_estado(cid, estado, complicaciones)
+         logger.info(f"Cirugía {cid} → estado: {estado}")

@@ -1,0 +1,46 @@
+diff --git a/services/recepcion_service.py b/services/recepcion_service.py
+index 2942e56..f782888 100644
+--- a/services/recepcion_service.py
++++ b/services/recepcion_service.py
+@@ -132,17 +132,27 @@ class RecepcionService:
+     def recepciones_hoy(self) -> List[Recepcion]:
+         # RBAC: cualquier usuario autenticado puede consultar
+         self.authorizer.require_authenticated()
+-        hoy = datetime.now().strftime('%Y-%m-%d')
+-        todas = self.repo.get_all()
+-        return [r for r in todas if r.fecha_hora and r.fecha_hora.startswith(hoy)]
+-
+-    # ── Validación ────────────────────────────────────────────────────────
+-    def _validar(self, data: dict) -> None:
+-        errores = []
+-        if not data.get('animal_id'):
+-            errores.append("Debe seleccionar un paciente")
+-        if not data.get('motivo', '').strip():
+-            errores.append("El motivo de consulta es obligatorio")
+-        if errores:
+-            raise BusinessLogicError(
+-                f"Datos de recepción inválidos: {'; '.join(errores)}")
++        # Fase 6 (S-M6): antes se llamaba ``self.repo.get_all()`` (sin
++        # filtros) y luego se filtraba en Python con ``r.fecha_hora.startswith(hoy)``,
++        # trayendo TODAS las recepciones a memoria (potencialmente miles
++        # de registros). Ahora delegamos el filtrado al motor SQL vía
++        # rango ``fecha_hora >= :desde AND fecha_hora < :hasta`` en el
++        # repositorio, que es ordenes de magnitud más eficiente y soporta
++        # índices sobre la columna. Usamos ``fecha_desde``/``fecha_hasta``
++        # en lugar de ``date(fecha_hora) = :hoy`` para permitir el uso
++        # de un índice sobre la columna (``date(col)`` no usa índices en
++        # SQLite).
++        from datetime import datetime, timedelta
++        hoy = datetime.now().date()
++        desde = datetime.combine(hoy, datetime.min.time())
++        hasta = desde + timedelta(days=1)
++        return self.repo.get_all({
++            'fecha_desde': desde.strftime('%Y-%m-%d %H:%M:%S'),
++            'fecha_hasta': hasta.strftime('%Y-%m-%d %H:%M:%S'),
++        })
++
++    # Fase 6 (S-M2): eliminado ``_validar`` muerto. Era dead code —
++    # ningún caller lo invocaba (``registrar_recepcion`` valida vía
++    # ``RecepcionSchema`` de Pydantic). Replicaba reglas ya expresadas
++    # en ``schemas/clinica.py::RecepcionSchema`` (animal_id > 0,
++    # motivo min_length=1).

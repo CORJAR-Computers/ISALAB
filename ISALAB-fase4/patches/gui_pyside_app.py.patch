@@ -1,0 +1,18 @@
+diff --git a/gui_pyside/app.py b/gui_pyside/app.py
+index 6f4777c..b6a04e0 100644
+--- a/gui_pyside/app.py
++++ b/gui_pyside/app.py
+@@ -100,7 +100,12 @@ class LabVetApp(QMainWindow):
+             from PySide6.QtGui import QPixmap
+             import os
+             from config import BASE_DIR
+-            logo_path = os.path.join(BASE_DIR, "assets", "logo_sidebar.png")
++            # Fase 4 (C3): el archivo real en el repositorio es
++            # `Logo_Sidebar.png` (PascalCase). En filesystems
++            # case-sensitive (Linux/macOS) la referencia lowercase
++            # `logo_sidebar.png` no resolvía y el logo caía al fallback
++            # de texto "IsaLab". Usamos el nombre exacto del asset.
++            logo_path = os.path.join(BASE_DIR, "assets", "Logo_Sidebar.png")
+             if os.path.exists(logo_path):
+                 pixmap = QPixmap(logo_path)
+                 scaled_pixmap = pixmap.scaledToWidth(

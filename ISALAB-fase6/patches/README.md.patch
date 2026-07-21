@@ -1,0 +1,56 @@
+diff --git a/README.md b/README.md
+index a70c66c..68618b9 100644
+--- a/README.md
++++ b/README.md
+@@ -169,6 +169,12 @@ Para iniciar la aplicación en entorno de desarrollo:
+ python main.py
+ ```
+ 
++Para imprimir la versión y salir (útil para scripts de CI / empaquetado):
++
++```bash
++python main.py --version   # o: python main.py -V
++```
++
+ En la primera ejecución, el sistema detectará que no existen usuarios
+ registrados y desplegará automáticamente un asistente de instalación para
+ crear la cuenta de administrador.
+@@ -182,17 +188,34 @@ y un manifiesto de Windows para garantizar que el icono en la barra de tareas
+ se muestre de forma independiente:
+ 
+ ```bash
++# Build de producción (default): consola oculta, optimize=2 (strips docstrings)
+ python build_app.py
+ ```
+ 
+-Para builds de diagnóstico (con consola visible para ver trazas):
++Para builds de **diagnóstico** (con consola visible para ver `print`s y
++tracebacks, y `optimize=0` para preservar docstrings/asserts):
+ 
+ ```bash
+-# En PowerShell:
+-$env:ISALAB_DEBUG=1
+-python build_app.py
++# Pasa --debug y se setea ISALAB_DEBUG=1 automáticamente:
++python build_app.py --debug
+ ```
+ 
++> ⚙️ **Cómo funciona el flag `--debug`**: `build_app.py` exporta
++> `ISALAB_DEBUG=1` en el entorno del subprocess de PyInstaller. El archivo
++> `IsaLab.spec` lee esa variable para fijar `console=True` (en vez de
++> `False`) y `optimize=0` (en vez de `2`). Esto evita tener que editar el
++> `.spec` manualmente para depurar. Si compilas directamente con
++> `pyinstaller IsaLab.spec` sin pasar por `build_app.py`, puedes setear la
++> variable a mano:
++>
++> ```bash
++> # En PowerShell:
++> $env:ISALAB_DEBUG=1
++> pyinstaller --noconfirm IsaLab.spec
++> ```
++>
++> (En Linux/macOS: `ISALAB_DEBUG=1 pyinstaller --noconfirm IsaLab.spec`.)
++
+ El ejecutable compilado estará disponible en la carpeta:
+ `dist/IsaLab/IsaLab.exe`
+ 

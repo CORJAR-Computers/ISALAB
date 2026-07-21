@@ -1,0 +1,18 @@
+diff --git a/services/report_laboratorio.py b/services/report_laboratorio.py
+index 85eadd3..bb41f97 100644
+--- a/services/report_laboratorio.py
++++ b/services/report_laboratorio.py
+@@ -204,7 +204,12 @@ class ReporteLaboratorioService:
+             "fecha_entrega": formatear_fecha(muestra.fecha_entrega) if muestra.fecha_entrega else None,
+             "tecnico": muestra.tecnico or "—",
+             "veterinario_ref": muestra.veterinario_ref or "—",
+-            "urgente": muestra.es_urgente,
++            # Fase 6 (S-M7): ``Muestra.es_urgente`` es un MÉTODO, no una
++            # property (ver ``database/models.py:93``). Sin los paréntesis,
++            # Jinja recibía el objeto ``bound method`` y lo evaluaba como
++            # truthy siempre, mostrando el badge "URGENTE" en todos los
++            # reportes. Llamamos con paréntesis para obtener el booleano.
++            "urgente": muestra.es_urgente(),
+             # Resultados
+             "secciones": secciones,
+             "resultados_planos": resultados,

@@ -1,0 +1,50 @@
+diff --git a/services/report_cirugia.py b/services/report_cirugia.py
+index e12c07d..461549b 100644
+--- a/services/report_cirugia.py
++++ b/services/report_cirugia.py
+@@ -21,18 +21,27 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteCirugiaService:
+-    """Genera PDFs de informes quirúrgicos."""
++    """Genera PDFs de informes quirúrgicos.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.cirugia_repo = CirugiaRepository()
+         self.animal_repo = AnimalRepository()
+         self.historia_repo = HistoriaClinicaRepository()
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -41,6 +50,7 @@ class ReporteCirugiaService:
+         cirugia_id: int,
+         datos_adicionales: Optional[Dict[str, Any]] = None,
+     ) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(cirugia_id, datos_adicionales)
+         return generar_reporte("cirugia", contexto)
+ 
+@@ -50,6 +60,7 @@ class ReporteCirugiaService:
+         ruta_salida: str,
+         datos_adicionales: Optional[Dict[str, Any]] = None,
+     ) -> str:
++        self._check_perm()
+         contexto = self._construir_contexto(cirugia_id, datos_adicionales)
+         return generar_por_tipo("cirugia", contexto, ruta_salida)
+ 

@@ -8,7 +8,7 @@
 # para evitar breaking changes (ver issue H6 del análisis).
 
 # ── UI / GUI ────────────────────────────────────────────────────────────
-pyside6>=6.6.0,<6.9.0          # Framework principal de UI (Qt for Python)
+pyside6>=6.6.0          # Framework principal de UI (Qt for Python)
 
 # ── Datos / ORM / Migraciones ──────────────────────────────────────────
 sqlalchemy>=2.0.0,<2.1.0       # ORM

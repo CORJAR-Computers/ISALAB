@@ -1,0 +1,10 @@
+diff --git a/database/__init__.py b/database/__init__.py
+index e69de29..7d1a8da 100644
+--- a/database/__init__.py
++++ b/database/__init__.py
+@@ -0,0 +1,5 @@
++"""Database layer for IsaLab — connection management
++(``DatabaseManager`` singleton + SQLAlchemy ``SessionLocal``/``Base``),
++dataclasses (``database.models``), and the repository pattern
++(``database.repositories``).
++"""

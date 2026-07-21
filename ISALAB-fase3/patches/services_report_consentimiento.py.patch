@@ -1,0 +1,56 @@
+diff --git a/services/report_consentimiento.py b/services/report_consentimiento.py
+index e13dbb0..e99fba6 100644
+--- a/services/report_consentimiento.py
++++ b/services/report_consentimiento.py
+@@ -1,7 +1,7 @@
+ # services/report_consentimiento.py
+ """Puente para generar consentimientos informados."""
+ 
+-from typing import Dict, Any
++from typing import Optional, Dict, Any
+ 
+ from reports import (
+     generar_reporte,
+@@ -14,15 +14,24 @@ from reports import (
+     DatosLaboratorio,
+ )
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class ReporteConsentimientoService:
+-    """Genera PDFs de consentimientos informados."""
++    """Genera PDFs de consentimientos informados.
+ 
+-    def __init__(self):
++    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
++    rol ``asistente`` o superior.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.lab = DatosLaboratorio()
++        self.authorizer = Authorizer(usuario_actual)
++
++    def _check_perm(self) -> None:
++        self.authorizer.require_role('asistente')
+ 
+     # ── API pública ──────────────────────────────────────────────────────
+ 
+@@ -30,6 +39,7 @@ class ReporteConsentimientoService:
+         self,
+         consentimiento_data: Dict[str, Any],
+     ) -> bytes:
++        self._check_perm()
+         contexto = self._construir_contexto(consentimiento_data)
+         return generar_reporte("consentimiento_informado", contexto)
+ 
+@@ -38,6 +48,7 @@ class ReporteConsentimientoService:
+         consentimiento_data: Dict[str, Any],
+         ruta_salida: str,
+     ) -> str:
++        self._check_perm()
+         contexto = self._construir_contexto(consentimiento_data)
+         return generar_por_tipo(
+             "consentimiento_informado",

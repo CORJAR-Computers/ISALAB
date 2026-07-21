@@ -1,0 +1,132 @@
+diff --git a/services/usuario_service.py b/services/usuario_service.py
+index 7427eb3..d90ef49 100644
+--- a/services/usuario_service.py
++++ b/services/usuario_service.py
+@@ -13,6 +13,7 @@ from utils.security import (
+     PermissionDeniedError,
+     generar_password_temporal,
+     necesita_migracion,
++    dummy_verify_password,
+ )
+ 
+ logger = setup_logger()
+@@ -33,14 +34,41 @@ class UsuarioService:
+         """
+         Autentica un usuario y retorna sus datos.
+         Implementa protección contra timing attacks.
++
++        Fase 5 (H-S1): antes, cuando el username no existía, se
++        levantaba ``AuthenticationError`` inmediatamente sin ejecutar
++        bcrypt. Eso permitía a un atacante distinguir "usuario no
++        existe" (respuesta rápida) vs "contraseña incorrecta" (lenta)
++        midiendo tiempos de respuesta, convirtiendo el login en un
++        oracle de enumeración de usernames. Ahora, en el branch
++        "no encontrado", ejecutamos ``dummy_verify_password(password)``
++        para consumir el mismo tiempo que una verificación real antes
++        de levantar el error.
++
++        Fase 5 (H-S6): el dict de retorno ahora incluye
++        ``'password_reset_required': bool`` — la GUI puede consultarlo
++        para forzar el cambio de contraseña tras un ``reset_password``
++        del admin. Antes, la contraseña temporal era permanente.
+         """
+         username_normalized = username.strip().lower()
+         logger.info(f"Intentando autenticar usuario: {username_normalized}")
+ 
+-        query = "SELECT id, username, nombre, rol, password_hash FROM usuarios WHERE username = ? AND activo = 1"
++        # Fase 5 (H-S6): seleccionamos también la flag
++        # ``password_reset_required`` (añadida por la migración
++        # ``c1a2b3c4d5e6``). Usamos ``COALESCE`` para tolerar BDs
++        # antiguas donde la columna todavía no exista.
++        query = (
++            "SELECT id, username, nombre, rol, password_hash, "
++            "COALESCE(password_reset_required, 0) AS password_reset_required "
++            "FROM usuarios WHERE username = ? AND activo = 1"
++        )
+         row = self.db.fetch_one(query, (username_normalized,))
+ 
+         if not row:
++            # Fase 5 (H-S1): ejecutar bcrypt contra un hash dummy para
++            # que el tiempo de respuesta sea similar al branch
++            # "contraseña incorrecta" y cerrar el timing oracle.
++            dummy_verify_password(password)
+             logger.warning(
+                 f"Login fallido: usuario no encontrado: {username_normalized}")
+             raise AuthenticationError("Usuario o contraseña incorrectos")
+@@ -72,7 +100,10 @@ class UsuarioService:
+             'id': row['id'],
+             'username': row['username'],
+             'nombre': row['nombre'],
+-            'rol': row['rol']
++            'rol': row['rol'],
++            # Fase 5 (H-S6): flag para forzar cambio de contraseña
++            # en el próximo login si fue reseteada por admin.
++            'password_reset_required': bool(row['password_reset_required']),
+         }
+ 
+     def cambiar_password(
+@@ -93,8 +124,13 @@ class UsuarioService:
+             raise AuthenticationError("La contraseña actual no es correcta")
+ 
+         nuevo_hash = hash_password(password_nueva)
++        # Fase 5 (H-S6): limpiar la flag ``password_reset_required``
++        # porque el usuario acaba de setear una contraseña nueva. Antes,
++        # la flag (seteada por ``reset_password``) quedaba en 1 para
++        # siempre porque nadie la limpiaba.
+         self.db.execute(
+-            "UPDATE usuarios SET password_hash = ? WHERE id = ?",
++            "UPDATE usuarios SET password_hash = ?, password_reset_required = 0 "
++            "WHERE id = ?",
+             (nuevo_hash, usuario_id)
+         )
+         logger.info(f"Contraseña actualizada para usuario ID: {usuario_id}")
+@@ -265,8 +301,11 @@ class UsuarioService:
+             raise ValueError(mensaje)
+ 
+         pwd_hash = hash_password(nueva_password)
++        # Fase 5 (H-S6): limpiar la flag — el admin seteó la contraseña
++        # manualmente, no es una temporal.
+         self.db.execute(
+-            "UPDATE usuarios SET password_hash = ? WHERE id = ?",
++            "UPDATE usuarios SET password_hash = ?, password_reset_required = 0 "
++            "WHERE id = ?",
+             (pwd_hash,
+              usuario_id))
+         logger.info(f"Contraseña actualizada para usuario ID: {usuario_id}")
+@@ -276,14 +315,35 @@ class UsuarioService:
+         Genera una nueva contraseña temporal para un usuario.
+         Requiere permisos de admin.
+         Retorna la nueva contraseña temporal.
++
++        Fase 5 (H-S6): setea ``password_reset_required = 1`` para que
++        la GUI de login pueda forzar al usuario a cambiarla en su
++        próximo inicio de sesión. Antes, la contraseña temporal era
++        permanente — un riesgo si el canal de entrega era interceptado.
+         """
+         self._verificar_admin()
+ 
+         nueva_password = generar_password_temporal()
+         pwd_hash = hash_password(nueva_password)
++        # Fase 5 (H-S6): setear la flag de "cambio forzado".
+         self.db.execute(
+-            "UPDATE usuarios SET password_hash = ? WHERE id = ?",
++            "UPDATE usuarios SET password_hash = ?, password_reset_required = 1 "
++            "WHERE id = ?",
+             (pwd_hash, usuario_id)
+         )
+         logger.info(f"Contraseña reseteada para usuario ID: {usuario_id}")
+         return nueva_password
++
++    def requires_password_change(self, usuario_id: int) -> bool:
++        """Indica si el usuario debe cambiar su contraseña en el próximo login.
++
++        Fase 5 (H-S6): helper para que la GUI de login consulte la flag
++        sin tener que re-ejecutar la query de autenticación. Usa
++        ``COALESCE`` para tolerar BDs donde la columna no exista todavía.
++        """
++        row = self.db.fetch_one(
++            "SELECT COALESCE(password_reset_required, 0) AS flag "
++            "FROM usuarios WHERE id = ?",
++            (usuario_id,)
++        )
++        return bool(row['flag']) if row else False

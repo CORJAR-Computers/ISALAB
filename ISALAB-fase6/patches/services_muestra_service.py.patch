@@ -1,0 +1,49 @@
+diff --git a/services/muestra_service.py b/services/muestra_service.py
+index 204638d..54a5cc5 100644
+--- a/services/muestra_service.py
++++ b/services/muestra_service.py
+@@ -114,7 +114,42 @@ class MuestraService:
+         return self.muestra_repo.get_all({'urgente': True})
+ 
+     def generar_codigo(self) -> str:
+-        """Genera código correlativo de manera atómica para laboratorio."""
++        """Genera código correlativo de manera atómica para laboratorio.
++
++        Fase 6 (S-M5): este método CONSUME el contador (``UPDATE ...
++        SET ultimo = ultimo + 1``). Para previsualizar sin consumir
++        (útil al abrir el diálogo de muestra), usar
++        ``preview_siguiente_codigo``.
++        """
+         # RBAC: cualquier usuario autenticado puede generar (consumir)
+         self.authorizer.require_authenticated()
+-        return self.db_manager.generar_codigo('LAB')
++        return self.db_manager.consumir_codigo('LAB')
++
++    def preview_siguiente_codigo(self) -> str:
++        """Retorna el siguiente código LAB-XXXX SIN consumirlo (read-only).
++
++        Fase 6 (S-M5): para que el diálogo de muestra pueda mostrar
++        "Próximo código: LAB-0042" al abrir, sin gastar el número si el
++        usuario cancela. Antes, ``generar_codigo`` se llamaba al abrir
++        el diálogo y al cerrar (dos consumos por cada muestra creada,
++        dejando huecos en la secuencia). El flujo correcto ahora es::
++
++            dialog.__init__  →  svc.preview_siguiente_codigo()  # preview
++            dialog._on_save  →  svc.consumir_codigo()           # consume
++
++        Coordinado con DB batch (9-a) que hace lo mismo en
++        ``AnimalService.obtener_siguiente_codigo``.
++        """
++        # RBAC: cualquier usuario autenticado puede previsualizar
++        self.authorizer.require_authenticated()
++        return self.db_manager.preview_siguiente_codigo('LAB')
++
++    def consumir_codigo(self) -> str:
++        """Consumo atómico del siguiente código LAB-XXXX.
++
++        Fase 6 (S-M5): alias explícito de ``generar_codigo`` para
++        simetría con ``preview_siguiente_codigo``.
++        """
++        # RBAC: cualquier usuario autenticado puede consumir
++        self.authorizer.require_authenticated()
++        return self.db_manager.consumir_codigo('LAB')

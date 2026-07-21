@@ -1,0 +1,87 @@
+diff --git a/gui_pyside/views/usuarios.py b/gui_pyside/views/usuarios.py
+index 7593483..4de5737 100644
+--- a/gui_pyside/views/usuarios.py
++++ b/gui_pyside/views/usuarios.py
+@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
+     QLabel,
+     QPushButton,
+     QMessageBox,
+-    QTableWidget,
+     QTableWidgetItem,
+     QHeaderView,
+     QCheckBox,
+@@ -14,7 +13,7 @@ from PySide6.QtWidgets import (
+ from PySide6.QtCore import Qt, Signal
+ from services.usuario_service import UsuarioService
+ from gui_pyside.dialogs.usuario_dialog import UsuarioDialog
+-from gui_pyside.components.components import ErrorHandler
++from gui_pyside.components.components import ErrorHandler, DataTable
+ from config import QT_STYLES
+ 
+ 
+@@ -76,26 +75,54 @@ class UsuariosView(QWidget):
+ 
+         # Checkbox para mostrar inactivos
+         self.mostrar_inactivos = QCheckBox("Mostrar usuarios inactivos")
+-        self.mostrar_inactivos.stateChanged.connect(self._cargar_datos)
++        # Fase 6 (G-M10): antes se conectaba ``stateChanged`` directo
++        # a ``self._cargar_datos``, que tenía que aceptar ``*args``
++        # para tragarse el ``int`` (0/2) que emite ``stateChanged``.
++        # Esto es anti-idiomático: la firma del método quedaba
++        # sucia para todos los callers internos. Ahora el lambda
++        # descarta el argumento y ``_cargar_datos`` vuelve a ser
++        # una firma limpia sin ``*args``.
++        self.mostrar_inactivos.stateChanged.connect(
++            lambda _: self._cargar_datos())
+         layout.addWidget(self.mostrar_inactivos)
+ 
+-        # Tabla
+-        self.table = QTableWidget()
+-        self.table.setColumnCount(6)
+-        self.table.setHorizontalHeaderLabels(
+-            ["ID", "Usuario", "Nombre", "Rol", "Estado", "Acciones"])
+-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+-        self.table.verticalHeader().setVisible(False)
++        # Tabla. Fase 6 (G-L9): antes se instanciaba ``QTableWidget``
++        # directo y se configuraba a mano (columnCount, headers,
++        # resize mode, selection behavior, edit triggers, vertical
++        # header). El resto del codebase usa ``DataTable`` que ya
++        # encapsula todo eso en ``__init__`` + ``setup_columns``.
++        # Ahora usamos ``DataTable`` para consistencia visual y de
++        # código. La API es ligeramente distinta (``setup_columns``
++        # en lugar de ``setColumnCount`` + ``setHorizontalHeaderLabels``)
++        # pero el resultado es equivalente.
++        self.table = DataTable()
++        self.table.setup_columns(
++            ["ID", "Usuario", "Nombre", "Rol", "Estado", "Acciones"],
++            col_widths=[60, 140, None, 100, 100, 220]
++        )
++        # La columna "Nombre" (índice 2) se estira para rellenar el
++        # ancho disponible. ``setup_columns`` con ``col_widths=None``
++        # estira TODAS las columnas; aquí queremos que solo "Nombre"
++        # lo haga, así que seteamos el modo manualmente después.
++        header = self.table.horizontalHeader()
++        header.setSectionResizeMode(2, QHeaderView.Stretch)
++        # Las columnas con ancho fijo (0,1,3,4,5) ya las configuró
++        # ``setup_columns`` via ``setColumnWidth``.
+         layout.addWidget(self.table)
+ 
+     @ErrorHandler.handle_exception
+-    def _cargar_datos(self, *args):
++    def _cargar_datos(self):
++        # Fase 6 (G-M10): firma limpia sin ``*args``. El lambda en
++        # el ``connect`` descarta el int del ``stateChanged``.
+         solo_activos = not self.mostrar_inactivos.isChecked()
+         usuarios = self.service.listar_usuarios(solo_activos)
+         self.table.setRowCount(len(usuarios))
+ 
++        # Fase 6 (G-L9): como esta tabla tiene widgets interactivos
++        # (botones Editar/Activar/Desactivar) en la columna 5, no
++        # podemos usar ``DataTable.populate()`` (que solo setea texto).
++        # Llenamos las celdas manualmente con ``setItem`` para las
++        # columnas de texto y ``setCellWidget`` para los botones.
+         for row, user in enumerate(usuarios):
+             self.table.setItem(row, 0, QTableWidgetItem(str(user['id'])))
+             self.table.setItem(row, 1, QTableWidgetItem(user['username']))

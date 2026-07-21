@@ -1,0 +1,52 @@
+diff --git a/services/report_service.py b/services/report_service.py
+index 69577cb..8a24d09 100644
+--- a/services/report_service.py
++++ b/services/report_service.py
+@@ -1,14 +1,26 @@
+ # services/report_service.py (si no lo tienes)
++"""
++Dashboard y métricas — ISALAB.
++
++Fase 3 (issue C1 — RBAC bypass): las operaciones de lectura de
++estadísticas solo requieren usuario autenticado.
++"""
+ from database.connection import DatabaseManager
+ from datetime import datetime, timedelta
++from typing import Optional
++from utils.security import Authorizer
+ 
+ 
+ class ReportService:
+-    def __init__(self):
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.db = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def get_dashboard_stats(self):
+         """Obtiene estadísticas para el dashboard"""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
++
+         stats = {}
+ 
+         # Animales activos
+@@ -56,6 +68,9 @@ class ReportService:
+ 
+     def get_efficiency_metrics(self):
+         """Obtiene métricas de eficiencia"""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
++
+         metrics = {}
+ 
+         # Tasa de cumplimiento
+@@ -83,6 +98,9 @@ class ReportService:
+ 
+     def get_reporte_muestras(self, fecha_inicio, fecha_fin):
+         """Obtiene reporte detallado de muestras"""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
++
+         query = """
+             SELECT m.*, a.nombre as animal_nombre, a.codigo as animal_codigo
+             FROM muestras m

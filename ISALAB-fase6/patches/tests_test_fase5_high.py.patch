@@ -1,0 +1,34 @@
+diff --git a/tests/test_fase5_high.py b/tests/test_fase5_high.py
+index dd9ea41..edab124 100644
+--- a/tests/test_fase5_high.py
++++ b/tests/test_fase5_high.py
+@@ -453,15 +453,26 @@ def test_h_s2_usuario_dialog_uses_8_chars():
+ 
+ 
+ def test_h_s2_validar_fortaleza_password_requires_8():
+-    """``validar_fortaleza_password`` exige 8 caracteres (servicio)."""
++    """``validar_fortaleza_password`` exige 8 caracteres (servicio).
++
++    Fase 6 (S-L5): ahora también exige al menos un símbolo — antes
++    ``Abc12345`` era válido, ahora requiere ``Abc12345!`` o similar.
++    """
+     from utils.security import validar_fortaleza_password
+     es_valida, _ = validar_fortaleza_password('Abc123')
+     assert not es_valida, (
+         "validar_fortaleza_password debería rechazar 6 caracteres"
+     )
+-    es_valida, _ = validar_fortaleza_password('Abc12345')
++    # Fase 6: la validez de 8 caracteres ahora depende de tener símbolo.
++    es_valida_no_sym, _ = validar_fortaleza_password('Abc12345')
++    assert not es_valida_no_sym, (
++        "Fase 6 (S-L5): validar_fortaleza_password ahora debe rechazar "
++        "8 caracteres sin símbolo"
++    )
++    es_valida, _ = validar_fortaleza_password('Abc12345!')
+     assert es_valida, (
+-        "validar_fortaleza_password debería aceptar 8 caracteres con mayúscula/minúscula/dígito"
++        "validar_fortaleza_password debería aceptar 8 caracteres con "
++        "mayúscula/minúscula/dígito/símbolo"
+     )
+ 
+ 

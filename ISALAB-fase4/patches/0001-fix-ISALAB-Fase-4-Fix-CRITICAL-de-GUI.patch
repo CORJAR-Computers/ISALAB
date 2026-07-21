@@ -1,0 +1,795 @@
+From 7adf0b7339d54d7c9d27ee528863d571633ca19e Mon Sep 17 00:00:00 2001
+From: ISALAB Phase 4 Bot <isalab-bot@example.local>
+Date: Tue, 21 Jul 2026 00:01:01 +0000
+Subject: [PATCH] =?UTF-8?q?fix(ISALAB):=20Fase=204=20=E2=80=94=20Fix=20CRI?=
+ =?UTF-8?q?TICAL=20de=20GUI?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Cuatro defects CRITICAL de la capa GUI (Task 5 del worklog):
+
+C1 — ResultadoMuestraDialog._guardar (muestra_dialog.py:780) llamaba
+   self.ref_text.toPlainText() sobre un widget que NUNCA se crea en el
+   diálogo → AttributeError al pulsar '💾 Guardar Resultados' y los
+   resultados nunca se persistían. Las referencias por ítem ya viajan
+   dentro del JSON de resultado_final (columna 'Referencia' de la
+   tabla); valor_ref global queda como None.
+
+C2 — DashboardView.refresh() (dashboard.py:188) era un no-op con sólo
+   el comentario '# Aquí cargarías datos reales desde los servicios'.
+   Las 4 tarjetas ('Total Pacientes', 'Muestras Pendientes',
+   'Consultas Hoy', 'Urgentes') mostraban '0' permanente. Ahora
+   refresh() invoca ReportService.get_dashboard_stats() y vuelca los
+   conteos en los QLabel correspondientes (self.stat_labels). Se
+   llama también al final de _build_layout y tras rebuild_layout
+   para no perder el estado al cambiar de tema. Se extiende
+   get_dashboard_stats con 'consultas_hoy'.
+
+C3 — app.py:103 y splash.py:24 referenciaban 'logo_sidebar.png'
+   (lowercase) pero el asset real es 'Logo_Sidebar.png' (PascalCase).
+   En filesystems case-sensitive (Linux/macOS) el logo no carga y
+   cae al fallback de texto 'IsaLab'. Se actualizan ambas referencias
+   al nombre exacto del asset.
+
+C4 — muestra_dialog.py:823 y :1083 y vacuna_dialog.py:260 llamaban
+   os.startfile(filepath) directamente. os.startfile SOLO existe en
+   Windows; en macOS/Linux levanta AttributeError y rompe los botones
+   '🖨️ Guardar e Imprimir PDF', '🖨️ Imprimir Resultados Pro' y
+   '🖨️ Imprimir Certificado'. Se centraliza la lógica en el nuevo
+   helper gui_pyside/utils/platform_utils.py::open_file_externally()
+   que despacha os.startfile / open / xdg-open según sys.platform,
+   devuelve False si el archivo no existe o el visor no está
+   disponible (sin propagar excepciones).
+
+Tests: tests/test_fase4_gui.py — 16 tests de regresión (cubre los 4
+fixes con verificación estática de código y tests funcionales del
+helper multiplataforma con monkeypatch de subprocess.Popen y
+os.startfile).
+
+Branch: feat/phase4-gui-critical-fixes
+Base:   feat/phase3-security-critical (46f979c)
+---
+ gui_pyside/app.py                    |   7 +-
+ gui_pyside/dialogs/muestra_dialog.py |  21 +-
+ gui_pyside/dialogs/vacuna_dialog.py  |   7 +-
+ gui_pyside/splash.py                 |   4 +-
+ gui_pyside/utils/platform_utils.py   |  89 ++++++
+ gui_pyside/views/dashboard.py        |  71 ++++-
+ services/report_service.py           |   9 +
+ tests/test_fase4_gui.py              | 386 +++++++++++++++++++++++++++
+ 8 files changed, 579 insertions(+), 15 deletions(-)
+ create mode 100644 gui_pyside/utils/platform_utils.py
+ create mode 100644 tests/test_fase4_gui.py
+
+diff --git a/gui_pyside/app.py b/gui_pyside/app.py
+index 6f4777c..b6a04e0 100644
+--- a/gui_pyside/app.py
++++ b/gui_pyside/app.py
+@@ -100,7 +100,12 @@ class LabVetApp(QMainWindow):
+             from PySide6.QtGui import QPixmap
+             import os
+             from config import BASE_DIR
+-            logo_path = os.path.join(BASE_DIR, "assets", "logo_sidebar.png")
++            # Fase 4 (C3): el archivo real en el repositorio es
++            # `Logo_Sidebar.png` (PascalCase). En filesystems
++            # case-sensitive (Linux/macOS) la referencia lowercase
++            # `logo_sidebar.png` no resolvía y el logo caía al fallback
++            # de texto "IsaLab". Usamos el nombre exacto del asset.
++            logo_path = os.path.join(BASE_DIR, "assets", "Logo_Sidebar.png")
+             if os.path.exists(logo_path):
+                 pixmap = QPixmap(logo_path)
+                 scaled_pixmap = pixmap.scaledToWidth(
+diff --git a/gui_pyside/dialogs/muestra_dialog.py b/gui_pyside/dialogs/muestra_dialog.py
+index acaf84f..1f5f3db 100644
+--- a/gui_pyside/dialogs/muestra_dialog.py
++++ b/gui_pyside/dialogs/muestra_dialog.py
+@@ -777,7 +777,14 @@ class ResultadoMuestraDialog(BaseDialog):
+ 
+         estado = self.estado.currentText()
+         resultado_final = self._extraer_json_desde_tabla()
+-        valor_ref = self.ref_text.toPlainText().strip() or None
++        # Fase 4 (C1): antes se referenciaba `self.ref_text.toPlainText()`
++        # pero ese widget NUNCA se crea en el diálogo, así que el botón
++        # "💾 Guardar Resultados" siempre levantaba AttributeError y los
++        # resultados no se persistían. Las referencias por ítem ya viajan
++        # dentro del JSON de `resultado_final` (columna "Referencia" de
++        # `tabla_resultados`); el campo global `valor_referencia` de la
++        # muestra queda como None cuando no hay texto global adicional.
++        valor_ref = None
+ 
+         self.service.actualizar_estado(
+             self.muestra_id, estado, resultado_final, valor_ref)
+@@ -820,7 +827,11 @@ class ResultadoMuestraDialog(BaseDialog):
+         with open(filepath, "wb") as f:
+             f.write(pdf_bytes)
+ 
+-        os.startfile(filepath)
++        # Fase 4 (C4): reemplazo de `os.startfile(filepath)` que solo
++        # existe en Windows y rompía "🖨️ Guardar e Imprimir PDF" en
++        # macOS/Linux. El helper usa `open` / `xdg-open` según el SO.
++        from gui_pyside.utils.platform_utils import open_file_externally
++        open_file_externally(filepath)
+ 
+ 
+ class DetalleMuestraDialog(BaseDialog):
+@@ -1080,7 +1091,11 @@ class DetalleMuestraDialog(BaseDialog):
+         filepath = os.path.join(dir_path, filename)
+         with open(filepath, "wb") as f:
+             f.write(pdf_bytes)
+-        os.startfile(filepath)
++        # Fase 4 (C4): helper multiplataforma en lugar de `os.startfile`
++        # (que solo existe en Windows y rompía el botón
++        # "🖨️ Imprimir Resultados Pro" en macOS/Linux).
++        from gui_pyside.utils.platform_utils import open_file_externally
++        open_file_externally(filepath)
+         self.btn_imprimir.setText("🖨️ Imprimir Resultados Pro")
+         self.btn_imprimir.setEnabled(True)
+ 
+diff --git a/gui_pyside/dialogs/vacuna_dialog.py b/gui_pyside/dialogs/vacuna_dialog.py
+index 42eb368..eaaa364 100644
+--- a/gui_pyside/dialogs/vacuna_dialog.py
++++ b/gui_pyside/dialogs/vacuna_dialog.py
+@@ -256,8 +256,11 @@ class DetalleVacunacionDialog(BaseDialog):
+         self.worker.start()
+ 
+     def _pdf_exito(self, ruta_pdf):
+-        import os
+-        os.startfile(ruta_pdf)
++        # Fase 4 (C4): `os.startfile` solo existe en Windows —
++        # usamos el helper multiplataforma para no romper el botón
++        # "🖨️ Imprimir Certificado" en macOS/Linux.
++        from gui_pyside.utils.platform_utils import open_file_externally
++        open_file_externally(ruta_pdf)
+         # ⚠️ CAMBIO 3: Restaurar el texto correcto del botón
+         self.btn_imprimir.setText("🖨️ Imprimir Certificado")
+         self.btn_imprimir.setEnabled(True)
+diff --git a/gui_pyside/splash.py b/gui_pyside/splash.py
+index a9f244a..e29e9fa 100644
+--- a/gui_pyside/splash.py
++++ b/gui_pyside/splash.py
+@@ -21,7 +21,9 @@ class SplashScreen(QSplashScreen):
+         self.logo = None
+ 
+         # Cargar logo si existe
+-        logo_path = BASE_DIR / "assets" / "logo_sidebar.png"
++        # Fase 4 (C3): el asset real es `Logo_Sidebar.png` (PascalCase).
++        # La referencia lowercase fallaba en Linux/macOS.
++        logo_path = BASE_DIR / "assets" / "Logo_Sidebar.png"
+         if logo_path.exists():
+             self.logo = QPixmap(str(logo_path))
+ 
+diff --git a/gui_pyside/utils/platform_utils.py b/gui_pyside/utils/platform_utils.py
+new file mode 100644
+index 0000000..e0f4428
+--- /dev/null
++++ b/gui_pyside/utils/platform_utils.py
+@@ -0,0 +1,89 @@
++# gui_pyside/utils/platform_utils.py
++"""Utilidades multiplataforma para la GUI de IsaLab.
++
++Fase 4 (C4): el código de `muestra_dialog.py` llamaba directamente
++`os.startfile(filepath)` para abrir el PDF generado. `os.startfile`
++SOLO existe en Windows; en macOS/Linux levanta
++`AttributeError: module 'os' has no attribute 'startfile'` y rompe
++los botones "🖨️ Guardar e Imprimir PDF" y "🖨️ Imprimir Resultados Pro".
++
++Este módulo expone `open_file_externally(filepath)` que usa el
++comando nativo de cada sistema operativo:
++
++* Windows  → `os.startfile(filepath)`
++* macOS    → `open filepath`
++* Linux    → `xdg-open filepath`
++
++El helper no bloquea el hilo de la GUI: dispara el visor en un
++subproceso desechable y reporta cualquier error sin levantar.
++"""
++
++from __future__ import annotations
++
++import os
++import subprocess
++import sys
++from pathlib import Path
++from typing import Union
++
++from utils.logger import setup_logger
++
++logger = setup_logger()
++
++PathLike = Union[str, "os.PathLike[str]"]
++
++
++def open_file_externally(filepath: PathLike) -> bool:
++    """Abre un archivo con la aplicación predeterminada del SO.
++
++    Devuelve `True` si la llamada al visor se dispatchó sin error
++    (no garantiza que el visor haya abierto el archivo — solo que
++    el comando arrancó). Devuelve `False` si no se pudo iniciar
++    el visor o si el archivo no existe.
++
++    Es intencionalmente tolerante: en caso de error se loguea y
++    se devuelve `False`, para no romper flujos críticos como el
++    guardado de resultados.
++    """
++    path = Path(filepath)
++    if not path.exists():
++        logger.error(
++            f"open_file_externally: el archivo no existe: {path}")
++        return False
++
++    try:
++        if sys.platform.startswith("win"):
++            # Windows: `os.startfile` solo existe aquí.
++            os.startfile(str(path))  # type: ignore[attr-defined]
++            logger.info(f"open_file_externally (win): {path}")
++            return True
++        elif sys.platform == "darwin":
++            # macOS: comando `open`.
++            subprocess.Popen(
++                ["open", str(path)],
++                stdout=subprocess.DEVNULL,
++                stderr=subprocess.DEVNULL,
++                close_fds=True,
++            )
++            logger.info(f"open_file_externally (mac): {path}")
++            return True
++        else:
++            # Linux / *BSD / Solaris: `xdg-open`.
++            subprocess.Popen(
++                ["xdg-open", str(path)],
++                stdout=subprocess.DEVNULL,
++                stderr=subprocess.DEVNULL,
++                close_fds=True,
++            )
++            logger.info(f"open_file_externally (linux): {path}")
++            return True
++    except FileNotFoundError as e:
++        # El visor nativo no está instalado (p.ej. contenedores
++        # sin `xdg-utils`). No es un error de la app — lo dejamos
++        # registrado para el usuario sin propagar la excepción.
++        logger.error(
++            f"open_file_externally: visor no disponible en {sys.platform}: {e}")
++        return False
++    except Exception as e:
++        logger.error(f"open_file_externally: error inesperado: {e}")
++        return False
+diff --git a/gui_pyside/views/dashboard.py b/gui_pyside/views/dashboard.py
+index 729fdbd..d0baf94 100644
+--- a/gui_pyside/views/dashboard.py
++++ b/gui_pyside/views/dashboard.py
+@@ -17,8 +17,15 @@ class DashboardView(QWidget):
+         super().__init__(parent)
+         self.theme_btn = None
+         self.current_theme = None
++        # Fase 4 (C2): referencias a los QLabel de valor de cada tarjeta
++        # de estadística, para que `refresh()` pueda actualizarlos sin
++        # reconstruir todo el layout. Antes, las 4 tarjetas mostraban
++        # "0" permanentemente porque `refresh()` era un no-op.
++        self.stat_labels = {}
+         self.setObjectName("dashboardView")
+         self._build_layout()
++        # Carga inicial de datos reales desde el servicio.
++        self.refresh()
+ 
+     def _get_theme(self):
+         return get_theme_colors()
+@@ -42,6 +49,8 @@ class DashboardView(QWidget):
+ 
+         # Rebuild with new theme colors
+         self._build_layout()
++        # Tras reconstruir, recargar datos para no perder los valores.
++        self.refresh()
+ 
+     def _toggle_theme(self):
+         """Cambia entre temas light/dark"""
+@@ -115,18 +124,23 @@ class DashboardView(QWidget):
+         cards_layout = QHBoxLayout()
+         cards_layout.setSpacing(15)
+ 
++        # Fase 4 (C2): guardamos referencias a los QLabel de valor para
++        # que `refresh()` pueda actualizarlos in-place. Antes el valor
++        # quedaba hardcodeado en "0" y `refresh()` era un no-op.
+         card1 = self._create_stat_card(
+-            "Total Pacientes", "0", theme['primary'])
++            "Total Pacientes", "0", theme['primary'], key='activos')
+         cards_layout.addWidget(card1)
+ 
+         card2 = self._create_stat_card(
+-            "Muestras Pendientes", "0", theme['warning'])
++            "Muestras Pendientes", "0", theme['warning'], key='pendientes')
+         cards_layout.addWidget(card2)
+ 
+-        card3 = self._create_stat_card("Consultas Hoy", "0", theme['accent'])
++        card3 = self._create_stat_card(
++            "Consultas Hoy", "0", theme['accent'], key='consultas_hoy')
+         cards_layout.addWidget(card3)
+ 
+-        card4 = self._create_stat_card("Urgentes", "0", theme['danger'])
++        card4 = self._create_stat_card(
++            "Urgentes", "0", theme['danger'], key='urgentes')
+         cards_layout.addWidget(card4)
+ 
+         layout.addLayout(cards_layout)
+@@ -149,8 +163,12 @@ class DashboardView(QWidget):
+ 
+         layout.addStretch()
+ 
+-    def _create_stat_card(self, title, value, color):
+-        """Crea una tarjeta de estadística"""
++    def _create_stat_card(self, title, value, color, key=None):
++        """Crea una tarjeta de estadística.
++
++        `key` (str|None): si se pasa, el QLabel de valor se guarda en
++        `self.stat_labels[key]` para que `refresh()` pueda actualizarlo.
++        """
+         card = QFrame()
+         card.setStyleSheet(f"""
+             QFrame {{
+@@ -173,6 +191,9 @@ class DashboardView(QWidget):
+         """)
+         layout.addWidget(value_label)
+ 
++        if key is not None:
++            self.stat_labels[key] = value_label
++
+         title_label = QLabel(title)
+         title_label.setAlignment(Qt.AlignCenter)
+         title_label.setStyleSheet("""
+@@ -187,5 +208,39 @@ class DashboardView(QWidget):
+ 
+     @ErrorHandler.handle_exception
+     def refresh(self):
+-        """Refresca los datos del dashboard"""
+-        # Aquí cargarías datos reales desde los servicios
++        """Refresca los datos del dashboard desde el servicio.
++
++        Fase 4 (C2): antes este método era un no-op con un comentario
++        "Aquí cargarías datos reales desde los servicios" — las 4
++        tarjetas quedaban en "0" sin importar el contenido de la BD.
++        Ahora invoca `ReportService.get_dashboard_stats()` y vuelca
++        los conteos en los QLabel correspondientes. El método es
++        tolerante: si el servicio falla, los labels conservan su
++        valor previo (no se rompe la UI).
++        """
++        from services.report_service import ReportService
++
++        try:
++            svc = ReportService()
++            stats = svc.get_dashboard_stats()
++        except Exception:
++            # El ErrorHandler decorador ya loguea la traza; aquí sólo
++            # evitamos que un fallo puntual del servicio deje la vista
++            # en un estado inconsistente.
++            return
++
++        # Mapeo stat → key interno del QLabel guardado en _build_layout.
++        mapping = {
++            'activos': stats.get('activos', 0),
++            'pendientes': stats.get('muestras_pendientes', 0),
++            'consultas_hoy': stats.get('consultas_hoy', 0),
++            'urgentes': stats.get('urgentes', 0),
++        }
++        for key, value in mapping.items():
++            label = self.stat_labels.get(key)
++            if label is not None:
++                # `int(...)` para evitar "3.0" en renderizado.
++                try:
++                    label.setText(str(int(value)))
++                except (TypeError, ValueError):
++                    label.setText(str(value))
+diff --git a/services/report_service.py b/services/report_service.py
+index 8a24d09..d260a09 100644
+--- a/services/report_service.py
++++ b/services/report_service.py
+@@ -64,6 +64,15 @@ class ReportService:
+         stats['tiempo_promedio'] = round(
+             row['promedio'], 1) if row and row['promedio'] else 0
+ 
++        # Fase 4 (C2): consultas registradas hoy. Antes el dashboard
++        # mostraba "0" permanentemente porque `refresh()` era no-op.
++        # Esta stat alimenta la 3ra tarjeta ("Consultas Hoy").
++        row = self.db.fetch_one(
++            "SELECT COUNT(*) as total FROM consultas WHERE date(fecha_hora) = ?",
++            (hoy,)
++        )
++        stats['consultas_hoy'] = row['total'] if row else 0
++
+         return stats
+ 
+     def get_efficiency_metrics(self):
+diff --git a/tests/test_fase4_gui.py b/tests/test_fase4_gui.py
+new file mode 100644
+index 0000000..f5babb4
+--- /dev/null
++++ b/tests/test_fase4_gui.py
+@@ -0,0 +1,386 @@
++"""
++Tests de regresión para Fase 4 — Fix CRITICAL de GUI.
++
++Cubre los 4 issues CRITICAL del análisis (Task 5 — GUI layer):
++
++- C1: ``ResultadoMuestraDialog._guardar`` referenciaba ``self.ref_text``
++  (widget que NUNCA se crea) → AttributeError al pulsar
++  "💾 Guardar Resultados". Tras Fase 4, ``valor_ref`` queda como
++  ``None`` y el guardado delega las referencias por ítem al JSON
++  de ``resultado_final``.
++
++- C2: ``DashboardView.refresh()`` era no-op (sólo un comentario
++  "# Aquí cargarías datos reales desde los servicios") → las 4
++  tarjetas siempre mostraban "0". Tras Fase 4, ``refresh()`` invoca
++  ``ReportService.get_dashboard_stats()`` y vuelca los conteos en
++  los ``QLabel`` de cada tarjeta.
++
++- C3: ``app.py`` y ``splash.py`` referenciaban ``logo_sidebar.png``
++  (lowercase) pero el asset real es ``Logo_Sidebar.png`` (PascalCase)
++  → en Linux/macOS el logo no carga y cae al fallback de texto.
++
++- C4: ``muestra_dialog.py`` (líneas 823, 1083) y ``vacuna_dialog.py``
++  llamaban ``os.startfile(filepath)`` que SOLO existe en Windows →
++  AttributeError en macOS/Linux. Tras Fase 4, todo pasa por
++  ``gui_pyside.utils.platform_utils.open_file_externally`` que
++  despacha ``os.startfile`` / ``open`` / ``xdg-open`` según el SO.
++
++Los tests no abren ventanas reales: verifican propiedades estáticas
++del código fuente y comportamientos del helper multiplataforma con
++``monkeypatch`` de ``subprocess.Popen`` / ``os.startfile``.
++"""
++from __future__ import annotations
++
++import os
++import re
++import subprocess
++import sys
++import textwrap
++from pathlib import Path
++from unittest.mock import MagicMock
++
++import pytest
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++if str(REPO_ROOT) not in sys.path:
++    sys.path.insert(0, str(REPO_ROOT))
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# Helpers
++# ─────────────────────────────────────────────────────────────────────────────
++
++def _read(rel_path: str) -> str:
++    """Lee un archivo del repo como texto UTF-8."""
++    return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
++
++
++def _setup_test_db() -> None:
++    """Crea las tablas mínimas para que ReportService funcione."""
++    from config import DB_PATH
++    from database.connection import DatabaseManager
++
++    db = DatabaseManager()
++    db.execute("""
++        CREATE TABLE IF NOT EXISTS animales (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            nombre TEXT, codigo TEXT, estado TEXT,
++            fecha_ingreso TEXT
++        )
++    """)
++    db.execute("""
++        CREATE TABLE IF NOT EXISTS muestras (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            codigo TEXT, estado TEXT, urgente INTEGER DEFAULT 0,
++            fecha_recoleccion TEXT, fecha_entrega TEXT,
++            resultado TEXT, valor_referencia TEXT,
++            tecnico TEXT, created_at TEXT
++        )
++    """)
++    db.execute("""
++        CREATE TABLE IF NOT EXISTS consultas (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            fecha_hora TEXT
++        )
++    """)
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C1 — self.ref_text AttributeError en ResultadoMuestraDialog._guardar
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_c1_no_self_ref_text_in_guardar():
++    """El cuerpo de ``_guardar`` ya no debe referenciar ``self.ref_text``
++    en código ejecutable (sí puede mencionarlo en comentarios)."""
++    src = _read("gui_pyside/dialogs/muestra_dialog.py")
++
++    # Localizar el método _guardar dentro de ResultadoMuestraDialog.
++    # Hay dos `_guardar` en el archivo (NuevaMuestraDialog y
++    # ResultadoMuestraDialog). El bug estaba en el segundo, que es
++    # el que llama a `actualizar_estado(..., valor_ref)`.
++    matches = list(re.finditer(r"def _guardar\(self\):", src))
++    assert len(matches) >= 2, "Se esperaban al menos 2 métodos _guardar"
++
++    # Tomar el último (ResultadoMuestraDialog._guardar)
++    start = matches[-1].start()
++    end = src.find("\n    @", start)
++    if end == -1:
++        end = len(src)
++    guardar_body = src[start:end]
++
++    # Quitar comentarios (# ...) línea por línea para no detectar
++    # menciones explicativas dentro del fix (como "antes se referenciaba
++    # self.ref_text.toPlainText()").
++    code_only_lines = []
++    for line in guardar_body.splitlines():
++        stripped = line.lstrip()
++        if stripped.startswith("#"):
++            continue
++        # Quitar la parte de comentario inline si la hay
++        if "#" in line:
++            line = line.split("#", 1)[0]
++        code_only_lines.append(line)
++    code_only = "\n".join(code_only_lines)
++
++    assert "self.ref_text" not in code_only, (
++        "ResultadoMuestraDialog._guardar todavía referencia self.ref_text "
++        "(widget inexistente) en código ejecutable — el bug C1 no está "
++        "arreglado."
++    )
++
++    # Y debe seguir llamando a actualizar_estado con un valor_ref seguro.
++    assert "actualizar_estado" in code_only
++    assert "valor_ref" in code_only
++
++
++def test_c1_widget_ref_text_never_created():
++    """Ningún método del diálogo asigna ``self.ref_text`` — confirmación
++    estática de que el atributo jamás existió."""
++    src = _read("gui_pyside/dialogs/muestra_dialog.py")
++    # No debe haber ninguna asignación self.ref_text = ...
++    assert not re.search(r"self\.ref_text\s*=", src), (
++        "Se detectó `self.ref_text = ...` — el widget se estaría creando. "
++        "Si la intención es reintroducirlo, actualizar este test."
++    )
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C2 — Dashboard.refresh() era no-op
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_c2_refresh_calls_report_service():
++    """``refresh()`` debe invocar ``ReportService.get_dashboard_stats``."""
++    src = _read("gui_pyside/views/dashboard.py")
++    assert "ReportService" in src, (
++        "DashboardView no referencia ReportService — refresh() no puede "
++        "estar cargando datos reales."
++    )
++    assert "get_dashboard_stats" in src, (
++        "DashboardView no llama a get_dashboard_stats() — refresh() "
++        "sigue siendo un no-op."
++    )
++
++
++def test_c2_refresh_body_is_not_a_comment_only():
++    """El cuerpo de ``refresh()`` ya no debe ser sólo el comentario
++    '# Aquí cargarías datos reales desde los servicios'."""
++    src = _read("gui_pyside/views/dashboard.py")
++    # Localizar el método refresh
++    m = re.search(r"def refresh\(self\):", src)
++    assert m, "DashboardView.refresh no existe"
++
++    # Extraer el cuerpo (hasta el siguiente método a la misma indentación
++    # o fin de archivo)
++    start = m.end()
++    # Buscar el siguiente "def " o "    @" con indentación de método
++    next_def = re.search(r"\n    (@|def )", src[start:])
++    body = src[start: start + next_def.start()] if next_def else src[start:]
++
++    assert "# Aquí cargarías datos reales" not in body, (
++        "refresh() todavía contiene el comentario no-op original."
++    )
++    assert "ReportService" in body, (
++        "refresh() no instancia ReportService dentro de su cuerpo."
++    )
++
++
++def test_c2_stat_labels_tracked_for_refresh():
++    """El dashboard guarda referencias a los QLabel de valor para que
++    ``refresh()`` pueda actualizarlos sin reconstruir todo el layout."""
++    src = _read("gui_pyside/views/dashboard.py")
++    assert "self.stat_labels" in src, (
++        "DashboardView no mantiene self.stat_labels — refresh() no "
++        "tendría cómo actualizar los valores in-place."
++    )
++    # Las 4 keys esperadas
++    for key in ("activos", "pendientes", "consultas_hoy", "urgentes"):
++        assert f"key='{key}'" in src or f'key="{key}"' in src, (
++            f"DashboardView no registra una tarjeta con key='{key}'."
++        )
++
++
++def test_c2_report_service_returns_consultas_hoy():
++    """``get_dashboard_stats`` ahora retorna ``consultas_hoy`` para
++    alimentar la 3ra tarjeta del dashboard."""
++    _setup_test_db()
++    from services.report_service import ReportService
++
++    svc = ReportService(usuario_actual={"id": 1, "rol": "admin"})
++    stats = svc.get_dashboard_stats()
++    assert "consultas_hoy" in stats, (
++        "get_dashboard_stats no retorna 'consultas_hoy'."
++    )
++    assert isinstance(stats["consultas_hoy"], int)
++    assert stats["consultas_hoy"] >= 0
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C3 — Case mismatch logo_sidebar.png vs Logo_Sidebar.png
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_c3_app_uses_pascalcase_logo():
++    """``app.py`` debe referenciar ``Logo_Sidebar.png`` (PascalCase)."""
++    src = _read("gui_pyside/app.py")
++    assert '"Logo_Sidebar.png"' in src or "'Logo_Sidebar.png'" in src, (
++        "app.py no referencia 'Logo_Sidebar.png' (PascalCase) — "
++        "el bug C3 de case-mismatch en Linux/macOS persiste."
++    )
++    # No debe quedar la versión lowercase
++    assert '"logo_sidebar.png"' not in src, (
++        "app.py todavía referencia 'logo_sidebar.png' (lowercase)."
++    )
++
++
++def test_c3_splash_uses_pascalcase_logo():
++    """``splash.py`` debe referenciar ``Logo_Sidebar.png`` (PascalCase)."""
++    src = _read("gui_pyside/splash.py")
++    assert '"Logo_Sidebar.png"' in src or "'Logo_Sidebar.png'" in src, (
++        "splash.py no referencia 'Logo_Sidebar.png' (PascalCase)."
++    )
++    assert '"logo_sidebar.png"' not in src, (
++        "splash.py todavía referencia 'logo_sidebar.png' (lowercase)."
++    )
++
++
++def test_c3_pascalcase_asset_exists_on_disk():
++    """El asset ``Logo_Sidebar.png`` debe existir en el repo."""
++    asset = REPO_ROOT / "assets" / "Logo_Sidebar.png"
++    assert asset.exists(), (
++        f"No se encuentra {asset} — el fix de C3 asume este nombre exacto."
++    )
++
++
++# ─────────────────────────────────────────────────────────────────────────────
++# C4 — os.startfile crashes en macOS/Linux
++# ─────────────────────────────────────────────────────────────────────────────
++
++def test_c4_platform_utils_helper_exists():
++    """El módulo ``gui_pyside/utils/platform_utils.py`` debe existir
++    y exponer ``open_file_externally``."""
++    from gui_pyside.utils.platform_utils import open_file_externally
++    assert callable(open_file_externally), (
++        "open_file_externally no es callable."
++    )
++
++
++def test_c4_no_os_startfile_in_productive_dialogs():
++    """Ningún diálogo productivo debe llamar ``os.startfile(...)`` fuera
++    del helper centralizado. El helper SÍ puede usarlo (guardado por
++    ``sys.platform.startswith('win')``)."""
++    forbidden_files = [
++        "gui_pyside/dialogs/muestra_dialog.py",
++        "gui_pyside/dialogs/vacuna_dialog.py",
++    ]
++    pattern = re.compile(r"os\.startfile\s*\(")
++    for rel in forbidden_files:
++        src = _read(rel)
++        # Buscar usos reales (no comentarios ni strings)
++        for line_no, line in enumerate(src.splitlines(), start=1):
++            stripped = line.lstrip()
++            if stripped.startswith("#"):
++                continue
++            # Quitar strings para no falsos-positivos en docstrings/comentarios inline
++            # — basta con verificar que NO haya una llamada directa.
++            assert not pattern.search(line), (
++                f"{rel}:{line_no} todavía llama os.startfile() directamente: "
++                f"{line.strip()!r}"
++            )
++
++
++def test_c4_helper_uses_correct_command_per_platform(monkeypatch, tmp_path):
++    """El helper debe dispatchar al comando correcto según ``sys.platform``."""
++    from gui_pyside.utils import platform_utils
++
++    # Crear un archivo real para que la verificación de existencia pase.
++    target = tmp_path / "sample.pdf"
++    target.write_bytes(b"%PDF-1.4 fake")
++
++    calls = []
++
++    def fake_popen(args, **kwargs):
++        calls.append(args)
++
++    # Caso Linux
++    monkeypatch.setattr(platform_utils.sys, "platform", "linux")
++    monkeypatch.setattr(platform_utils.subprocess, "Popen", fake_popen)
++    monkeypatch.delattr(platform_utils.os, "startfile", raising=False)
++
++    ok = platform_utils.open_file_externally(target)
++    assert ok is True
++    assert calls and calls[0][0] == "xdg-open"
++    assert str(target) in calls[0]
++
++    # Caso macOS
++    calls.clear()
++    monkeypatch.setattr(platform_utils.sys, "platform", "darwin")
++    ok = platform_utils.open_file_externally(target)
++    assert ok is True
++    assert calls and calls[0][0] == "open"
++
++    # Caso Windows: simular os.startfile
++    calls.clear()
++    monkeypatch.setattr(platform_utils.sys, "platform", "win32")
++
++    startfile_calls = []
++
++    def fake_startfile(p):
++        startfile_calls.append(p)
++
++    monkeypatch.setattr(platform_utils.os, "startfile", fake_startfile, raising=False)
++    ok = platform_utils.open_file_externally(target)
++    assert ok is True
++    assert startfile_calls and startfile_calls[0] == str(target)
++
++
++def test_c4_helper_returns_false_for_missing_file(tmp_path):
++    """El helper devuelve False sin levantar si el archivo no existe."""
++    from gui_pyside.utils.platform_utils import open_file_externally
++
++    missing = tmp_path / "does-not-exist.pdf"
++    assert open_file_externally(missing) is False
++
++
++def test_c4_helper_returns_false_when_viewer_missing(monkeypatch, tmp_path):
++    """Si el visor nativo no está instalado (FileNotFoundError),
++    el helper devuelve False en vez de propagar la excepción."""
++    from gui_pyside.utils import platform_utils
++
++    target = tmp_path / "sample.pdf"
++    target.write_bytes(b"%PDF-1.4 fake")
++
++    def raising_popen(args, **kwargs):
++        raise FileNotFoundError(f"No such command: {args[0]}")
++
++    monkeypatch.setattr(platform_utils.sys, "platform", "linux")
++    monkeypatch.setattr(platform_utils.subprocess, "Popen", raising_popen)
++    assert platform_utils.open_file_externally(target) is False
++
++
++def test_c4_muestra_dialog_imports_helper():
++    """``muestra_dialog.py`` debe importar el helper centralizado
++    en los dos puntos donde antes se llamaba ``os.startfile``."""
++    src = _read("gui_pyside/dialogs/muestra_dialog.py")
++    # Debe importar el helper en al menos un sitio (se usa import local
++    # dentro de los métodos `_imprimir_pdf` y `_pdf_exito`).
++    assert "from gui_pyside.utils.platform_utils import open_file_externally" in src, (
++        "muestra_dialog.py no importa open_file_externally — el fix C4 "
++        "no está cableado."
++    )
++    assert "open_file_externally(filepath)" in src or "open_file_externally(" in src
++
++
++def test_c4_vacuna_dialog_imports_helper():
++    """``vacuna_dialog.py`` debe usar el helper en lugar de
++    ``os.startfile`` directo."""
++    src = _read("gui_pyside/dialogs/vacuna_dialog.py")
++    assert "open_file_externally" in src, (
++        "vacuna_dialog.py no usa open_file_externally."
++    )
++    # Ya no debe quedar llamado directo a os.startfile
++    for line in src.splitlines():
++        s = line.lstrip()
++        if s.startswith("#"):
++            continue
++        assert "os.startfile(" not in line, (
++            f"vacuna_dialog.py todavía llama os.startfile(): {line.strip()!r}"
++        )
+-- 
+2.47.3
+

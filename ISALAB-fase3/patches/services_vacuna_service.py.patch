@@ -1,0 +1,104 @@
+diff --git a/services/vacuna_service.py b/services/vacuna_service.py
+index 601da41..fd81ecc 100644
+--- a/services/vacuna_service.py
++++ b/services/vacuna_service.py
+@@ -1,30 +1,45 @@
+ # services/vacuna_service.py
+ """Lógica de negocio — Vacunación y Desparasitación (VAC-XXXX)"""
+ 
+-from typing import List, Dict, Any
++from typing import List, Dict, Any, Optional
+ 
+ from database.repositories import VacunacionRepository
+ from database.connection import DatabaseManager
+ from database.models import Vacunacion
+-from pydantic import ValidationError
++from pydantic import ValidationError as PydanticValidationError
+ 
+ from schemas.clinica import VacunacionSchema
+ from utils.exceptions import BusinessLogicError
+ from utils.logger import setup_logger
++from utils.security import Authorizer
+ 
+ logger = setup_logger()
+ 
+ 
+ class VacunaService:
+-    def __init__(self):
++    """Servicio de vacunación y desparasitación.
++
++    Fase 3 (issue C1 — RBAC bypass):
++        - ``registrar`` requiere rol ``veterinario`` o superior (es
++          una acción clínica).
++        - Lectura solo requiere usuario autenticado.
++    """
++
++    def __init__(self, usuario_actual: Optional[dict] = None):
+         self.repo = VacunacionRepository()
+         self.db_manager = DatabaseManager()
++        self.authorizer = Authorizer(usuario_actual)
+ 
+     def generar_codigo(self) -> str:
+         """Genera código correlativo de manera atómica."""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.db_manager.generar_codigo('VAC')
+ 
+     def registrar(self, data: Dict[str, Any]) -> Vacunacion:
++        # RBAC: requiere rol veterinario o superior
++        self.authorizer.require_role('veterinario')
++
+         try:
+             # Generar código automáticamente si no se proporciona
+             if not data.get('codigo'):
+@@ -49,40 +64,33 @@ class VacunaService:
+             logger.info(f"Vacunación registrada: {vacunacion.codigo}")
+             return vacunacion
+ 
+-        except ValidationError as e:
++        except PydanticValidationError as e:
+             error_msg = "\n".join(
+                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+             logger.error(f"Error Pydantic en vacunación: {error_msg}")
+             raise BusinessLogicError(
+-                f"Datos inválidos en la vacunación:\n{error_msg}")
++                f"Datos inválidos en vacunación:\n{error_msg}")
+         except Exception as e:
+             logger.error(f"Error inesperado en registrar_vacunacion: {e}")
+             raise
+ 
+     def obtener(self, vid: int) -> Vacunacion:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_id(vid)
+ 
+     def listar(self, filtros: dict = None) -> List[Vacunacion]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_all(filtros)
+ 
+     def por_paciente(self, animal_id: int) -> List[Vacunacion]:
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_by_animal(animal_id)
+ 
+     def proximas_a_vencer(self, dias: int = 30) -> List[Vacunacion]:
+         """Vacunas/desparasitaciones que vencen en los próximos `dias` días."""
++        # RBAC: cualquier usuario autenticado
++        self.authorizer.require_authenticated()
+         return self.repo.get_proximas(dias)
+-
+-    def _validar(self, data: dict) -> None:
+-        errores = []
+-        if not data.get('animal_id'):
+-            errores.append("Debe seleccionar un paciente")
+-        if not data.get('tipo') in ('Vacuna', 'Desparasitación'):
+-            errores.append("El tipo debe ser 'Vacuna' o 'Desparasitación'")
+-        if not data.get('producto', '').strip():
+-            errores.append("El nombre del producto es obligatorio")
+-        if not data.get('fecha_aplicacion'):
+-            errores.append("La fecha de aplicación es obligatoria")
+-        if errores:
+-            raise ValidationError(
+-                "Datos de vacunación inválidos", {
+-                    'errores': errores})

@@ -1,0 +1,81 @@
+diff --git a/gui_pyside/components/components.py b/gui_pyside/components/components.py
+index b107e67..a36f608 100644
+--- a/gui_pyside/components/components.py
++++ b/gui_pyside/components/components.py
+@@ -21,19 +21,70 @@ logger = setup_logger()
+ 
+ 
+ class ErrorHandler:
+-    """Manejador de errores decorador"""
++    """Manejador de errores decorador.
++
++    Fase 5 (issue HIGH H-G1): antes este decorador llamaba al método
++    ``critical`` de ``QMessageBox`` con ``parent=None``, mostraba el
++    mensaje crudo de la excepción al usuario y retornaba ``None``
++    implícitamente. Eso causaba tres problemas: el messagebox podía
++    quedar detrás de la ventana activa sin foco, se filtraban detalles
++    internos (nombres de tablas, rutas, identificadores) al usuario
++    final, y los callers que esperaban un valor de retorno recibían
++    ``None`` y rompían con ``TypeError`` downstream.
++
++    Ahora:
++      - Localiza un parent razonable (el primer arg si es ``QWidget``,
++        sino la ventana activa de ``QApplication``, sino ``None``).
++      - Construye un mensaje sanitizado: si la excepción hereda de
++        ``IsaLabException`` usa su ``str()`` (ya user-friendly); para
++        cualquier otra, muestra "Ocurrió un error inesperado" + el tipo
++        de excepción (sin el detalle crudo).
++      - Retorna el sentinel ``_ERROR_SENTINEL`` para que los callers
++        puedan detectar el fallo sin TypeError.
++    """
++    _ERROR_SENTINEL = object()
++
+     @staticmethod
+     def handle_exception(func):
++        from utils.exceptions import IsaLabException
++
++        def _find_parent(args):
++            """Busca un QWidget válido entre los args del método."""
++            try:
++                from PySide6.QtWidgets import QWidget, QApplication
++            except ImportError:
++                return None
++            for a in args:
++                if isinstance(a, QWidget):
++                    return a
++            # Sin widget explícito: usar la ventana activa de la app.
++            app = QApplication.instance()
++            if app is not None:
++                active = app.activeWindow()
++                if active is not None:
++                    return active
++            return None
++
++        def _sanitize_message(e: Exception) -> str:
++            """Mensaje seguro para el usuario final."""
++            if isinstance(e, IsaLabException):
++                # La jerarquía IsaLabException ya user-friendly.
++                return str(e) or "Error de lógica de negocio."
++            # No exponer detalles internos (SQL, paths, etc.).
++            return (
++                "Ocurrió un error inesperado. "
++                "Consulte el log para más detalles."
++            )
++
+         def wrapper(*args, **kwargs):
+             try:
+                 return func(*args, **kwargs)
+             except Exception as e:
+-                from utils.logger import setup_logger
+-                logger = setup_logger()
+                 logger.error(f"Error en UI: {e}", exc_info=True)
+-
+-                msg = str(e)
+-                QMessageBox.critical(None, "Error", msg)
++                parent = _find_parent(args)
++                msg = _sanitize_message(e)
++                QMessageBox.critical(parent, "Error", msg)
++                return ErrorHandler._ERROR_SENTINEL
+         return wrapper
+ 
+ 

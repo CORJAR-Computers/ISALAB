@@ -1,0 +1,22 @@
+diff --git a/services/consulta_service.py b/services/consulta_service.py
+index 6c9f292..8046682 100644
+--- a/services/consulta_service.py
++++ b/services/consulta_service.py
+@@ -107,12 +107,8 @@ class ConsultaService:
+         self.repo.update(c)
+         logger.info(f"Consulta {cid} actualizada")
+ 
+-    def _validar(self, data: dict) -> None:
+-        errores = []
+-        if not data.get('animal_id'):
+-            errores.append("Debe seleccionar un paciente")
+-        if not data.get('motivo', '').strip():
+-            errores.append("El motivo de consulta es obligatorio")
+-        if errores:
+-            raise BusinessLogicError(
+-                f"Datos de consulta inválidos: {'; '.join(errores)}")
++    # Fase 6 (S-M2): eliminado ``_validar`` muerto. Era dead code —
++    # ningún caller lo invocaba (``registrar_consulta`` valida vía
++    # ``ConsultaSchema`` de Pydantic). Replicaba reglas ya expresadas
++    # en ``schemas/clinica.py::ConsultaSchema`` (animal_id > 0,
++    # motivo min_length=1).
