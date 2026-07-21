@@ -175,7 +175,11 @@ class MovimientoRepository(BaseRepository):
         with self.get_session() as session:
             q = sa.text("SELECT * FROM movimientos WHERE animal_id = :id ORDER BY fecha_hora DESC")
             rows = session.execute(q, {"id": animal_id}).mappings().all()
-            return [Movimiento(**dict(row)) for row in rows]
+            # Fase 6 (DB-M5): usamos ``Movimiento.from_row`` para acceso
+            # uniforme con el resto de modelos. Antes hacía
+            # ``Movimiento(**dict(row))`` que rompía si la query traía
+            # columnas extra (joins futuros) — ``from_row`` filtra.
+            return [Movimiento.from_row(r) for r in rows]
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -294,6 +298,21 @@ class RecepcionRepository(BaseRepository):
                 if filtros.get('busqueda'):
                     query += " AND (r.codigo LIKE :b OR a.nombre LIKE :b OR a.codigo LIKE :b)"
                     params['b'] = f"%{filtros['busqueda']}%"
+                # Fase 6 (S-M6): soporte de filtrado por rango de
+                # ``fecha_hora``. ``fecha_desde`` inclusivo, ``fecha_hasta``
+                # exclusivo (patrón ``[desde, hasta)``) — esto permite
+                # consultar "todas las recepciones de hoy" sin caer en
+                # trampas de borde de timezone o comparaciones de strings.
+                # ``r.fecha_hora`` puede ser NULL si el INSERT falló a
+                # mitad de camino; los operadores ``>=`` / ``<`` sobre
+                # NULL devuelven NULL (que SQLite excluye del WHERE), así
+                # que no se necesita un COALESCE adicional.
+                if filtros.get('fecha_desde'):
+                    query += " AND r.fecha_hora >= :fdesde"
+                    params['fdesde'] = filtros['fecha_desde']
+                if filtros.get('fecha_hasta'):
+                    query += " AND r.fecha_hora < :fhasta"
+                    params['fhasta'] = filtros['fecha_hasta']
             query += " ORDER BY r.fecha_hora DESC"
             rows = session.execute(sa.text(query), params).mappings().all()
             return [Recepcion.from_row(dict(r)) for r in rows]

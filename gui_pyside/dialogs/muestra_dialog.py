@@ -30,6 +30,7 @@ import json
 from gui_pyside.dialogs.base_dialog import BaseDialog
 from gui_pyside.dialogs.animal_dialog import NuevoAnimalDialog
 from gui_pyside.components.components import ErrorHandler
+from gui_pyside.components.forms import LoadingOverlay
 from gui_pyside.utils.messages import show_error, show_warning
 from utils.logger import setup_logger
 
@@ -204,7 +205,34 @@ class NuevaMuestraDialog(BaseDialog):
         main_layout.setSpacing(24)
         self.content_layout.addLayout(main_layout)
 
-        self.codigo_generado = self.service.generar_codigo()
+        # Fase 6 (G-L7): antes se llamaba a ``self.service.generar_codigo()``
+        # aquí, en ``_build()``, ANTES de que el usuario llenara nada.
+        # Eso consumía un código LAB-XXXX del contador atómico en CADA
+        # apertura del diálogo, incluso si el usuario cancelaba. Con
+        # tiempo, la tabla de muestras quedaba con huecos enormes en la
+        # secuencia (LAB-0001, LAB-0007, LAB-0015, ...) porque los
+        # códigos cancelados no se podían reciclar.
+        #
+        # Ahora mostramos un placeholder "LAB-????" y solo consumimos
+        # un código real al guardar. Si el servicio tiene
+        # ``preview_siguiente_codigo`` (API planeada por el batch 9-b),
+        # lo usamos para mostrar el código siguiente sin consumirlo.
+        # Mientras 9-b no lo añada, el placeholder es la mejor opción.
+        #
+        # Defensive: si ``preview_siguiente_codigo`` existe pero falla
+        # (ej: requiere usuario autenticado y el diálogo no lo pasa
+        # aún), caemos al placeholder en lugar de propagar la
+        # excepción. Mejor mostrar "LAB-????" que crashear al abrir
+        # el diálogo.
+        self.codigo_generado = "LAB-????"
+        preview_fn = getattr(self.service, 'preview_siguiente_codigo', None)
+        if callable(preview_fn):
+            try:
+                self.codigo_generado = preview_fn()
+            except Exception as e:
+                logger.warning(
+                    f"preview_siguiente_codigo falló, usando "
+                    f"placeholder 'LAB-????': {e}")
 
         left_card = QGroupBox("⚙️ Configuración del Análisis")
         style_group(left_card, IsaStyles.PRIMARY)
@@ -227,7 +255,17 @@ class NuevaMuestraDialog(BaseDialog):
 
         btn_refresh = QPushButton("🔄")
         btn_refresh.setFixedSize(32, 32)
-        btn_refresh.setToolTip("Generar nuevo código")
+        # Fase 6 (G-L7): el botón "🔄" antes llamaba a ``generar_codigo()``
+        # que CONSUME el código. Si el servicio aún no tiene
+        # ``preview_siguiente_codigo``, deshabilitamos el botón refresh
+        # (no tiene sentido refrescar un placeholder). Cuando 9-b
+        # añada el método preview, el botón se re-habilita solo.
+        btn_refresh.setToolTip("Previsualizar siguiente código")
+        if not callable(preview_fn):
+            btn_refresh.setEnabled(False)
+            btn_refresh.setToolTip(
+                "Previsualización no disponible aún — el código se "
+                "generará al guardar.")
         btn_refresh.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
@@ -235,6 +273,10 @@ class NuevaMuestraDialog(BaseDialog):
                 border-radius: 4px;
             }}
             QPushButton:hover {{
+                background-color: {IsaStyles.LIGHT_BG};
+            }}
+            QPushButton:disabled {{
+                color: {IsaStyles.GRAY};
                 background-color: {IsaStyles.LIGHT_BG};
             }}
         """)
@@ -367,7 +409,18 @@ class NuevaMuestraDialog(BaseDialog):
         self.set_save_callback(self._guardar)
 
     def _regenerar_codigo(self):
-        self.codigo_generado = self.service.generar_codigo()
+        # Fase 6 (G-L7): si el servicio tiene ``preview_siguiente_codigo``,
+        # lo usamos (NO consume el contador). Si no lo tiene, este botón
+        # está deshabilitado en ``_build`` y nunca debería llamarse —
+        # pero por defensividad, si llega aquí, no hacemos nada.
+        preview_fn = getattr(self.service, 'preview_siguiente_codigo', None)
+        if not callable(preview_fn):
+            return
+        try:
+            self.codigo_generado = preview_fn()
+        except Exception as e:
+            logger.warning(f"preview_siguiente_codigo falló: {e}")
+            return
         self.lbl_codigo.setText(
             f"<b style='font-size:18px; color:{IsaStyles.PRIMARY};'>{self.codigo_generado}</b>")
 
@@ -443,6 +496,24 @@ class NuevaMuestraDialog(BaseDialog):
             return
 
         animal_id = self.selector_paciente.current_data()
+
+        # Fase 6 (G-L7): aquí sí consumimos un código real del contador
+        # atómico. Si el usuario llegó hasta este punto, es porque
+        # validó el form y decidió guardar — consumir el código es
+        # legítimo. Antes se consumía en ``_build`` (al abrir el
+        # diálogo), gastando códigos en aperturas canceladas.
+        #
+        # Si el servicio tiene ``consumir_codigo()`` (API planeada por
+        # 9-b), la usamos (algunas implementaciones separan preview de
+        # consumir). Si no, usamos ``generar_codigo()`` que consume
+        # atómicamente.
+        if self.codigo_generado == "LAB-????" or not self.codigo_generado:
+            # Placeholder → consumir uno real ahora.
+            consumir_fn = getattr(self.service, 'consumir_codigo', None)
+            if callable(consumir_fn):
+                self.codigo_generado = consumir_fn()
+            else:
+                self.codigo_generado = self.service.generar_codigo()
 
         datos_muestra = {
             'codigo': self.codigo_generado,
@@ -951,8 +1022,20 @@ class DetalleMuestraDialog(BaseDialog):
         super().__init__(parent, "📄 Reporte de Muestra", 1000, 600)
         self.muestra_id = muestra_id
         self.service = MuestraService()
+        # Fase 6 (G-M8): overlay de carga para el botón "Imprimir
+        # Resultados Pro" (spawn de ``PDFProWorker``). Lazy-init: se
+        # crea solo si el usuario dispara la impresión. ``parent=self``
+        # para que el overlay se redimensione con el diálogo y se
+        # destruya automáticamente al cerrarlo.
+        self._loading_overlay = None
         self._build()
         self._cargar_datos()
+
+    def _ensure_loading_overlay(self):
+        """Crea el ``LoadingOverlay`` perezosamente."""
+        if self._loading_overlay is None:
+            self._loading_overlay = LoadingOverlay(self, "Generando PDF...")
+        return self._loading_overlay
 
     def _build(self):
         main_layout = QHBoxLayout()
@@ -1161,6 +1244,13 @@ class DetalleMuestraDialog(BaseDialog):
         self.btn_imprimir.setText("Generando Reporte Pro... ⏳")
         self.btn_imprimir.setEnabled(False)
 
+        # Fase 6 (G-M8): mostramos el overlay de carga ANTES de
+        # arrancar el worker. ``LoadingOverlay.start()`` no bloquea —
+        # es solo un widget semitransparente sobre el diálogo. El
+        # worker corre en otro thread, así que la UI sigue responsiva
+        # (el overlay gira) mientras el PDF se genera.
+        self._ensure_loading_overlay().start("Generando PDF...")
+
         muestra = self.service.obtener_muestra(self.muestra_id)
         entidad = getattr(muestra, 'empresa', None) or 'Persona Natural'
         es_empresa = entidad.strip().upper() != "PERSONA NATURAL"
@@ -1186,7 +1276,17 @@ class DetalleMuestraDialog(BaseDialog):
         self.worker.error.connect(self._pdf_error)
         # Limpieza automática al terminar (éxito o error).
         self.worker.finished.connect(self.worker.deleteLater)
+        # Fase 6 (G-M8): ocultar overlay cuando el worker termine
+        # (éxito o error). ``finished`` se emite DESPUÉS de
+        # ``terminado``/``error``, así que las callbacks ya
+        # actualizaron la UI — el overlay ya no es necesario.
+        self.worker.finished.connect(self._hide_loading_overlay)
         self.worker.start()
+
+    def _hide_loading_overlay(self):
+        """Oculta el overlay de carga si está visible."""
+        if self._loading_overlay is not None:
+            self._loading_overlay.stop()
 
     def _pdf_exito(self, pdf_bytes):
         dir_path = "data/pdfs"
@@ -1207,6 +1307,11 @@ class DetalleMuestraDialog(BaseDialog):
     def _pdf_error(self, error_msg):
         self.btn_imprimir.setText("🖨️ Imprimir Resultados Pro")
         self.btn_imprimir.setEnabled(True)
+        # Fase 6 (G-M8): en error, ocultamos el overlay acá también
+        # (aunque ``finished`` ya lo hará, lo hacemos acá para que el
+        # overlay desaparezca antes de que aparezca el QMessageBox de
+        # error — sinó el overlay tapa el dialog).
+        self._hide_loading_overlay()
         show_error(
             self,
             "Fallo en el motor de impresión.",

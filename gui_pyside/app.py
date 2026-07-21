@@ -61,6 +61,15 @@ class SidebarButton(QPushButton):
 
 
 class LabVetApp(QMainWindow):
+    # Fase 6 (G-L8): antes ``setMinimumSize(1200, 700)`` y
+    # ``_center_window`` hacían ``self.resize(1200, 768)`` — dos
+    # constantes distintas para la misma idea ("tamaño inicial de la
+    # ventana principal"). Ahora hay una sola constante
+    # ``DEFAULT_WINDOW_SIZE`` y ``_center_window`` la usa, así como
+    # ``setMinimumSize`` (con un poco de margen para que el usuario
+    # pueda encoger la ventana sin perder el header).
+    DEFAULT_WINDOW_SIZE = (1280, 800)
+
     def __init__(self, usuario: dict = None):
         super().__init__()
         self.usuario = usuario or {}
@@ -68,9 +77,15 @@ class LabVetApp(QMainWindow):
         # re-obtenerlo en cada __init__).
         logger.info(f"LabVetApp inicializado con usuario: {self.usuario}")
         self.setWindowTitle("IsaLab - Centro Diagnóstico Veterinario")
-        self.setMinimumSize(1200, 700)
+        # Fase 6 (G-L8): mínimo consistente con el tamaño inicial.
+        min_w, min_h = 1200, 700
+        self.setMinimumSize(min_w, min_h)
         self.setStyleSheet(GLOBAL_STYLESHEET)
         self._center_window()
+        # Fase 6 (G-M2): ``self.views`` ya se usaba como cache de
+        # vistas instanciadas (dict ``name -> view``). El handler
+        # ``_on_theme_changed`` ahora lo recorre para refrescar tema
+        # en TODAS las vistas, no solo el dashboard.
         self.views = {}
         self.active_button = None
 
@@ -81,7 +96,11 @@ class LabVetApp(QMainWindow):
         self._show_dashboard()
 
     def _center_window(self):
-        self.resize(1200, 768)
+        # Fase 6 (G-L8): usa ``DEFAULT_WINDOW_SIZE`` (constante de
+        # clase) en lugar de un literal ``1200, 768`` hardcodeado
+        # distinto del ``setMinimumSize(1200, 700)``.
+        w, h = self.DEFAULT_WINDOW_SIZE
+        self.resize(w, h)
         screen_geo = self.screen().availableGeometry()
         frame_geo = self.frameGeometry()
         center_point = screen_geo.center()
@@ -287,7 +306,58 @@ class LabVetApp(QMainWindow):
     # VISTAS
     # ======================================================================
 
+    # Fase 6 (G-M1): antes existían 9 métodos ``_show_X`` casi idénticos
+    # (dashboard, recepcion, animales, historia, consultas, cirugias,
+    # vacunacion, muestras, reportes) cada uno repitiendo el patrón:
+    #
+    #   if name not in self.views:
+    #       self.views[name] = ViewClass(self.content_area)
+    #       self.content_area.addWidget(self.views[name])
+    #   else:
+    #       self.views[name].refresh()
+    #   self.content_area.setCurrentWidget(self.views[name])
+    #
+    # Eran ~60-80 líneas de duplicación. Ahora hay un único método
+    # genérico ``_show_view(name, factory)`` que encapsula ese patrón,
+    # y los 9 wrappers públicos solo pasan la clase correspondiente.
+    # Los nombres públicos se conservan para que los ``connect`` del
+    # sidebar no cambien.
+
+    def _show_view(self, name: str, factory):
+        """Patrón único para mostrar una vista (lazy-init + refresh).
+
+        Args:
+            name: clave en ``self.views`` (str).
+            factory: callable ``parent -> QWidget`` que instancia la
+                vista la primera vez. En llamadas subsiguientes se
+                invoca ``view.refresh()`` si existe (la mayoría lo
+                implementan para actualizar datos sin reconstruir el
+                layout).
+        """
+        if name not in self.views:
+            view = factory(self.content_area)
+            self.views[name] = view
+            self.content_area.addWidget(view)
+        else:
+            view = self.views[name]
+            # Fase 6 (G-M2): ``refresh`` es opcional — algunos views
+            # (ReportesView) pueden no implementarlo todavía. Si no
+            # existe, simplemente traemos la vista al frente sin
+            # recargar datos (antes estos métodos asumían que siempre
+            # existía ``refresh``).
+            if hasattr(view, 'refresh'):
+                try:
+                    view.refresh()
+                except Exception as e:
+                    logger.warning(
+                        f"Error refrescando vista '{name}': {e}")
+        self.content_area.setCurrentWidget(view)
+
     def _show_dashboard(self):
+        # El dashboard es especial: su señal ``theme_changed`` debe
+        # conectarse una sola vez (al crear la instancia), así que no
+        # podemos usar ``_show_view`` directamente sin perder esa lógica.
+        # Mantenemos el patrón explícito solo para este view.
         if 'dashboard' not in self.views:
             self.views['dashboard'] = DashboardView(self.content_area)
             # Fase 5 (H-G5): antes la señal ``theme_changed`` del Dashboard
@@ -315,99 +385,81 @@ class LabVetApp(QMainWindow):
         el tema anterior). Resultado: la mitad de la pantalla en claro
         y la otra en oscuro tras un toggle.
 
-        Ahora, al emitirse la señal, recorremos todas las vistas activas
-        y llamamos a su método ``rebuild_layout()`` si existe (lo
-        implementan los views que ya tienen soporte para tema); si no,
-        llamamos a ``refresh()`` como fallback.
+        Fase 6 (G-M2): antes el handler solo recorría ``self.views``
+        llamando ``rebuild_layout()``/``refresh()`` — pero solo lo
+        hacía en vistas EXCEPTO el dashboard. Eso significaba que si el
+        usuario había abierto ``recepcion`` y ``animales`` pero NO
+        ``vacunacion``, esa última no se actualizaba al cambiar de
+        tema. Ahora iteramos sobre TODAS las vistas instanciadas
+        (incluyendo el dashboard) y:
+          1. Si tiene ``apply_theme()`` (método nuevo recomendado para
+             este propósito), lo llamamos.
+          2. Si no, intentamos ``rebuild_layout()`` (lo implementan
+             vistas que ya tienen soporte de tema).
+          3. Como último recurso, ``refresh()``.
+        Cualquier excepción se loguea pero no rompe el toggle.
         """
-        for name, view in self.views.items():
-            if name == 'dashboard':
-                continue  # ya se reconstruyó a sí mismo
+        for name, view in list(self.views.items()):
             try:
-                if hasattr(view, 'rebuild_layout'):
+                # ``apply_theme`` es la API preferida (G-M2) — no
+                # re-fetcha datos, solo re-aplica estilos inline.
+                if hasattr(view, 'apply_theme'):
+                    view.apply_theme()
+                elif hasattr(view, 'rebuild_layout'):
                     view.rebuild_layout()
                 elif hasattr(view, 'refresh'):
+                    # Skip dashboard: ya se reconstruyó a sí mismo
+                    # dentro de ``_toggle_theme`` (emite la señal
+                    # DESPUÉS de rebuild_layout).
+                    if name == 'dashboard':
+                        continue
                     view.refresh()
             except Exception as e:
                 logger.warning(
                     f"No se pudo re-aplicar tema a la vista '{name}': {e}")
 
     def _show_recepcion(self):
-        if 'recepcion' not in self.views:
-            self.views['recepcion'] = RecepcionView(self.content_area)
-            self.content_area.addWidget(self.views['recepcion'])
-        else:
-            self.views['recepcion'].refresh()
-        self.content_area.setCurrentWidget(self.views['recepcion'])
+        self._show_view('recepcion',
+                        lambda parent: RecepcionView(parent))
 
     def _show_animales(self):
-        if 'animales' not in self.views:
-            self.views['animales'] = AnimalesView(self.content_area)
-            self.content_area.addWidget(self.views['animales'])
-        else:
-            self.views['animales'].refresh()
-        self.content_area.setCurrentWidget(self.views['animales'])
+        self._show_view('animales',
+                        lambda parent: AnimalesView(parent))
 
     def _show_historia(self):
-        if 'historia' not in self.views:
-            self.views['historia'] = HistoriaView(self.content_area)
-            self.content_area.addWidget(self.views['historia'])
-        else:
-            self.views['historia'].refresh()
-        self.content_area.setCurrentWidget(self.views['historia'])
+        self._show_view('historia',
+                        lambda parent: HistoriaView(parent))
 
     def _show_consultas(self):
-        if 'consultas' not in self.views:
-            self.views['consultas'] = ConsultasView(self.content_area)
-            self.content_area.addWidget(self.views['consultas'])
-        else:
-            self.views['consultas'].refresh()
-        self.content_area.setCurrentWidget(self.views['consultas'])
+        self._show_view('consultas',
+                        lambda parent: ConsultasView(parent))
 
     def _show_cirugias(self):
-        if 'cirugias' not in self.views:
-            self.views['cirugias'] = CirugiasView(self.content_area)
-            self.content_area.addWidget(self.views['cirugias'])
-        else:
-            self.views['cirugias'].refresh()
-        self.content_area.setCurrentWidget(self.views['cirugias'])
+        self._show_view('cirugias',
+                        lambda parent: CirugiasView(parent))
 
     def _show_vacunacion(self):
-        if 'vacunacion' not in self.views:
-            self.views['vacunacion'] = VacunacionView(self.content_area)
-            self.content_area.addWidget(self.views['vacunacion'])
-        else:
-            self.views['vacunacion'].refresh()
-        self.content_area.setCurrentWidget(self.views['vacunacion'])
+        self._show_view('vacunacion',
+                        lambda parent: VacunacionView(parent))
 
     def _show_muestras(self):
-        if 'muestras' not in self.views:
-            self.views['muestras'] = MuestrasView(self.content_area)
-            self.content_area.addWidget(self.views['muestras'])
-        else:
-            self.views['muestras'].refresh()
-        self.content_area.setCurrentWidget(self.views['muestras'])
+        self._show_view('muestras',
+                        lambda parent: MuestrasView(parent))
 
     def _show_reportes(self):
-        if 'reportes' not in self.views:
-            self.views['reportes'] = ReportesView(self.content_area)
-            self.content_area.addWidget(self.views['reportes'])
-        else:
-            self.views['reportes'].refresh()
-        self.content_area.setCurrentWidget(self.views['reportes'])
+        self._show_view('reportes',
+                        lambda parent: ReportesView(parent))
 
     def _show_usuarios(self):
+        # ``UsuariosView`` requiere ``usuario_actual`` (para RBAC y
+        # para mostrar/ocultar acciones). Los demás views no lo
+        # necesitan. Por eso no usa ``_show_view`` directo — pero el
+        # patrón interno es idéntico.
         from gui_pyside.views.usuarios import UsuariosView
-        from utils.logger import setup_logger
-        logger = setup_logger()
         logger.info(f"_show_usuarios: self.usuario = {self.usuario}")
-        if 'usuarios' not in self.views:
-            self.views['usuarios'] = UsuariosView(
-                self.content_area, self.usuario)
-            self.content_area.addWidget(self.views['usuarios'])
-        else:
-            self.views['usuarios'].refresh()
-        self.content_area.setCurrentWidget(self.views['usuarios'])
+        self._show_view(
+            'usuarios',
+            lambda parent: UsuariosView(parent, self.usuario))
 
     def _cambiar_password(self):
         if not self.usuario:

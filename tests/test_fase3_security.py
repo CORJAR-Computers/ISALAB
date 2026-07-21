@@ -60,10 +60,18 @@ def _setup_test_db(tmp_path: Path) -> None:
     from database.connection import DatabaseManager
     DatabaseManager()
 
-    # Añadir las tablas clínicas mínimas para los tests
+    # Añadir las tablas clínicas mínimas para los tests.
+    # Fase 6: DROP IF EXISTS + CREATE garantiza que el esquema refleja
+    # exactamente lo que el test espera (con ``updated_at`` y
+    # ``created_at``). Sin esto, si una corrida anterior creó las
+    # tablas con un esquema viejo, ``CREATE IF NOT EXISTS`` lo deja
+    # pasar y los INSERT fallan con ``no such column``.
     import sqlite3
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
+
+    cur.execute("DROP TABLE IF EXISTS recepciones")
+    cur.execute("DROP TABLE IF EXISTS animales")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS recepciones (
@@ -76,7 +84,8 @@ def _setup_test_db(tmp_path: Path) -> None:
             estado TEXT DEFAULT 'Pendiente',
             proxima_cita TEXT,
             observaciones TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
         )
     """)
 
@@ -94,9 +103,15 @@ def _setup_test_db(tmp_path: Path) -> None:
             fecha_ingreso TEXT,
             estado TEXT DEFAULT 'Activo',
             observaciones TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
         )
     """)
+
+    # Fase 6: resetear contadores para garantizar aislamiento entre
+    # tests (la DB es de sesión, así que sin esto el contador ISAL-XXXX
+    # acumula entre tests y rompe las aserciones).
+    cur.execute("DELETE FROM codigo_contadores")
 
     conn.commit()
     conn.close()

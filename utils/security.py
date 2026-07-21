@@ -199,9 +199,22 @@ def generar_password_temporal(longitud: int = 12) -> str:
 
 
 def validar_fortaleza_password(password: str) -> tuple[bool, str]:
-    """
-    Valida la fortaleza de una contraseña.
-    Retorna (es_valida, mensaje_error).
+    """Valida la fortaleza de una contraseña.
+
+    Retorna ``(es_valida, mensaje_error)``.
+
+    Fase 6 (S-L5): añadido requisito de al menos un símbolo. Antes, la
+    UI (``instalador_dialog.py``, ``cambiar_password_dialog.py``) ya
+    mostraba "• Al menos un símbolo" como regla, pero este validador NO
+    lo enforceaba — inconsistencia que permitía crear contraseñas como
+    ``Abcdefg1`` (sin símbolos) aunque la UI dijera que se requería un
+    símbolo. Ahora el validador exige al menos un carácter de
+    ``string.punctuation`` (``!@#$%^&*()_+-=[]{}|;:,.<>?/`` y otros).
+
+    COORDINACIÓN (GUI batch 9-c): ``instalador_dialog.py`` y
+    ``cambiar_password_dialog.py`` ya muestran la regla de símbolo en
+    su UI (checklist "• Al menos un símbolo"), así que NO requieren
+    cambios — simplemente el chequeo ahora se cumple de verdad.
     """
     if len(password) < 8:
         return False, "La contraseña debe tener al menos 8 caracteres"
@@ -213,6 +226,9 @@ def validar_fortaleza_password(password: str) -> tuple[bool, str]:
         return False, "Debe incluir al menos una letra minúscula"
     if not any(c.isdigit() for c in password):
         return False, "Debe incluir al menos un número"
+    # Fase 6 (S-L5): símbolo obligatorio.
+    if not any(c in string.punctuation for c in password):
+        return False, "Debe incluir al menos un símbolo (!@#$%^&*...)"
     return True, ""
 
 

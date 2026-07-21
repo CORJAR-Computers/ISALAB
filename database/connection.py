@@ -3,9 +3,10 @@
 
 import sqlite3
 import threading
+from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional, List
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from config import DB_CONFIG
@@ -174,12 +175,65 @@ class DatabaseManager:
             raise DatabaseError(f"Error consultando datos: {e}")
 
     def generar_codigo(self, prefijo: str) -> str:
-        """Genera el siguiente código correlativo con prefijo."""
+        """Genera el siguiente código correlativo con prefijo.
+
+        Fase 6 (S-M5): este método CONSUME el contador (``UPDATE ...
+        SET ultimo = ultimo + 1``). Para preview-only sin consumo, usar
+        ``preview_siguiente_codigo``. ``generar_codigo`` se mantiene
+        como alias histórico de ``consumir_codigo``.
+        """
+        return self.consumir_codigo(prefijo)
+
+    def preview_siguiente_codigo(self, prefijo: str) -> str:
+        """Retorna el SIGUIENTE código SIN consumirlo (read-only).
+
+        Fase 6 (S-M5): para que la GUI pueda mostrar "Próximo código:
+        LAB-0042" al abrir el diálogo SIN gastar el número si el
+        usuario cancela. Antes no había forma de previsualizar sin
+        consumir — los diálogos llamaban a ``generar_codigo()`` que
+        incrementaba el contador, y si el usuario cancelaba, el número
+        quedaba "hueco" en la secuencia.
+
+        Si el prefijo no existe en ``codigo_contadores``, retorna
+        ``f"{prefijo}-0001"`` (lo que sería el primer código) sin
+        insertarlo — la inserción la hace ``consumir_codigo``.
+        """
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                row = cursor.execute(
+                    "SELECT ultimo FROM codigo_contadores WHERE prefijo = ?",
+                    (prefijo,)
+                ).fetchone()
+                siguiente = (row[0] + 1) if row else 1
+                return f"{prefijo}-{siguiente:04d}"
+        except Exception as e:
+            logger.error(f"Error en preview_siguiente_codigo {prefijo}: {e}")
+            raise DatabaseError(f"No se pudo previsualizar el código: {e}")
+
+    def consumir_codigo(self, prefijo: str) -> str:
+        """Consumo atómico del siguiente código (``UPDATE ... +1``).
+
+        Fase 6 (S-M5): split de ``generar_codigo`` en preview + consume.
+        Este método hace el incremento atómico y retorna el nuevo código.
+        Si el prefijo no existe en la tabla, lo inicializa en 1
+        (``INSERT OR IGNORE`` previo en ``_initialize_database`` debería
+        haberlo creado, pero por robustez lo manejamos aquí también).
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Asegurar que el prefijo exista (defensivo — el init
+                # ya lo crea, pero si la BD fue manipulada externamente
+                # podríamos encontrar la tabla sin el prefijo).
                 cursor.execute(
-                    "UPDATE codigo_contadores SET ultimo = ultimo + 1 WHERE prefijo = ?",
+                    "INSERT OR IGNORE INTO codigo_contadores "
+                    "(prefijo, ultimo) VALUES (?, 0)",
+                    (prefijo,)
+                )
+                cursor.execute(
+                    "UPDATE codigo_contadores SET ultimo = ultimo + 1 "
+                    "WHERE prefijo = ?",
                     (prefijo,)
                 )
                 row = cursor.execute(
@@ -191,7 +245,7 @@ class DatabaseManager:
                     raise DatabaseError(f"Prefijo desconocido: {prefijo}")
                 return f"{prefijo}-{row[0]:04d}"
         except Exception as e:
-            logger.error(f"Error generando código {prefijo}: {e}")
+            logger.error(f"Error consumiendo código {prefijo}: {e}")
             raise DatabaseError(f"No se pudo generar código: {e}")
 
     def fetch_all(self, query: str, params: tuple = ()) -> List[sqlite3.Row]:
@@ -285,3 +339,31 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fase 6 (DB-M3): listener ``before_flush`` para ``updated_at``.
+# ─────────────────────────────────────────────────────────────────────────────
+# Setea ``obj.updated_at = datetime.utcnow()`` para cualquier objeto dirty
+# que tenga una columna ``updated_at`` declarada. SQLite no soporta triggers
+# ``ON UPDATE`` nativos (los tendría que crear a mano por tabla), así que
+# este listener de SQLAlchemy es la forma portable de lograrlo.
+#
+# Alternativa considerada: ``onupdate=func.now()`` a nivel de Column en cada
+# ORM. Eso también funciona, pero solo se aplica cuando el ORM genera el
+# UPDATE (no cuando se hace ``session.execute(text("UPDATE ..."))`` crudo,
+# que es lo que hacen varios repositorios). El listener es más universal.
+@event.listens_for(SessionLocal, "before_flush")
+def _set_updated_at(session, flush_context, instances):
+    """Setea ``updated_at`` en objetos dirty que tengan esa columna."""
+    for obj in session.dirty:
+        try:
+            mapper = inspect(obj).mapper
+        except Exception:
+            # No es una entidad mapeada — ignoramos.
+            continue
+        if 'updated_at' in mapper.columns:
+            # Solo seteamos si la columna realmente va a ser persistida
+            # en este flush (no forzamos el flag dirty si no hay otros
+            # cambios — SQLAlchemy ya lo marcó dirty por algo).
+            obj.updated_at = datetime.utcnow()

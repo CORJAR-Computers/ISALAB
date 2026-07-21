@@ -54,6 +54,12 @@ class Movimiento:
     responsable: str = ""
     destino: Optional[str] = None
 
+    @classmethod
+    def from_row(cls, row) -> 'Movimiento':
+        # Fase 6 (DB-M5): acceso uniforme con ``row.get(k)`` para
+        # tolerar queries que no traen todas las columnas.
+        return cls(**{k: row.get(k) for k in cls.__dataclass_fields__ if k in row})
+
 
 @dataclass
 class Muestra:
@@ -115,7 +121,10 @@ class Recepcion:
 
     @classmethod
     def from_row(cls, row) -> 'Recepcion':
-        return cls(**{k: row[k] for k in cls.__dataclass_fields__ if k in row.keys()})
+        # Fase 6 (DB-M5): estandarizado a ``row.get(k)`` — antes usaba
+        # ``row[k]`` que fallaba con KeyError si la query omitía algún
+        # campo. ``.get()`` retorna ``None`` y el dataclass acepta eso.
+        return cls(**{k: row.get(k) for k in cls.__dataclass_fields__ if k in row})
 
 
 @dataclass

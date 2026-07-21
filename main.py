@@ -1,11 +1,27 @@
 # main.py
 import sys
+
+# ── Fast-path: flag --version / -V ────────────────────────────────────
+# Se ejecuta ANTES de importar PySide6 (que cuesta ~0.5s en cargarse) para
+# que `python main.py --version` sea instantáneo y usable en scripts de CI
+# / empaquetado sin penalización. Sale sin inicializar Qt, DB ni splash.
+if any(arg in {'--version', '-V'} for arg in sys.argv[1:]):
+    # Import tardío: config.py no depende de Qt.
+    from config import __version__
+    print(f"IsaLab {__version__}")
+    sys.exit(0)
+
 from pathlib import Path
 import traceback
 import threading
 from PySide6.QtWidgets import QApplication, QMessageBox, QDialog
 from PySide6.QtCore import QTimer, Signal, QObject
 from PySide6.QtGui import QIcon
+
+# Versión de la aplicación — single source of truth: ``config.__version__``.
+# Se importa aquí (no en el fast-path) para que el AppUserModelID de Windows
+# la use al fijar la identidad del proceso.
+from config import __version__
 
 # ── Icono en barra de tareas de Windows ──────────────────────────────
 # DEBE ejecutarse ANTES de crear QApplication para que Windows
@@ -14,8 +30,11 @@ if sys.platform == 'win32':
     import ctypes
     # Establece un AppUserModelID único para esta aplicación.
     # Sin esto, Windows la agrupa bajo el icono de python.exe.
+    # El número de versión va al final para que builds con versiones
+    # distintas se vean como entradas separadas en la barra de tareas.
+    _app_user_model_id = f"IsaLab.CentroDiagnosticoVeterinario.{__version__}"
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-        u'IsaLab.CentroDiagnosticoVeterinario.1.0'
+        _app_user_model_id
     )
 
 from config import (

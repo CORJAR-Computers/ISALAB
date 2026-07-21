@@ -6,6 +6,8 @@ from typing import List, Optional
 
 from database.repositories import HistoriaClinicaRepository, RecepcionRepository
 from database.models import HistoriaClinica
+from pydantic import ValidationError as PydanticValidationError
+from schemas.clinica import HistoriaClinicaSchema
 from utils.exceptions import BusinessLogicError
 from utils.logger import setup_logger
 from utils.security import Authorizer
@@ -31,22 +33,35 @@ class HistoriaService:
         # RBAC: requiere rol veterinario o superior
         self.authorizer.require_role('veterinario')
 
-        self._validar(data)
+        # Fase 6 (S-M2): antes ``crear_historia`` llamaba a un método
+        # privado ``_validar`` que replicaba (mal) las reglas del schema.
+        # Ahora validamos vía ``HistoriaClinicaSchema`` de Pydantic,
+        # igual que ``CirugiaService`` y ``ConsultaService``.
+        try:
+            datos_validados = HistoriaClinicaSchema(**data)
+        except PydanticValidationError as e:
+            error_msg = "\n".join(
+                [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+            logger.error(f"Error Pydantic en historia clínica: {error_msg}")
+            raise BusinessLogicError(
+                f"Datos inválidos en historia clínica:\n{error_msg}")
+
         historia = HistoriaClinica(
-            recepcion_id=int(data['recepcion_id']),
-            animal_id=int(data['animal_id']),
-            fecha=data.get('fecha') or datetime.now().strftime('%Y-%m-%d'),
-            anamnesis=data.get('anamnesis') or None,
-            examen_fisico=data.get('examen_fisico') or None,
+            recepcion_id=datos_validados.recepcion_id,
+            animal_id=datos_validados.animal_id,
+            fecha=datos_validados.fecha or datetime.now().strftime('%Y-%m-%d'),
+            anamnesis=datos_validados.anamnesis or None,
+            examen_fisico=datos_validados.examen_fisico or None,
             temperatura=_float(data.get('temperatura')),
             frecuencia_cardiaca=_int(data.get('frecuencia_cardiaca')),
             frecuencia_respiratoria=_int(data.get('frecuencia_respiratoria')),
             peso_consulta=_float(data.get('peso_consulta')),
-            diagnostico=data.get('diagnostico') or None,
-            diagnostico_diferencial=data.get('diagnostico_diferencial') or None,
-            tratamiento=data.get('tratamiento') or None,
-            pronostico=data.get('pronostico') or None,
-            veterinario=data.get('veterinario', '').strip() or None,
+            diagnostico=datos_validados.diagnostico or None,
+            diagnostico_diferencial=datos_validados.diagnostico_diferencial or None,
+            tratamiento=datos_validados.tratamiento or None,
+            pronostico=datos_validados.pronostico or None,
+            veterinario=(datos_validados.veterinario.strip()
+                         if datos_validados.veterinario else None),
         )
         historia.id = self.repo.create(historia)
         logger.info(
@@ -112,15 +127,10 @@ class HistoriaService:
         self.repo.update(h)
         logger.info(f"Historia clínica {hid} actualizada")
 
-    def _validar(self, data: dict) -> None:
-        errores = []
-        if not data.get('recepcion_id'):
-            errores.append("La recepción es obligatoria")
-        if not data.get('animal_id'):
-            errores.append("El paciente es obligatorio")
-        if errores:
-            raise BusinessLogicError(
-                f"Datos de historia clínica inválidos: {'; '.join(errores)}")
+    # Fase 6 (S-M2): eliminado ``_validar`` muerto. Era invocado por
+    # ``crear_historia`` pero replicaba (mal) las reglas del schema.
+    # Ahora ``crear_historia`` valida vía ``HistoriaClinicaSchema`` de
+    # Pydantic (igual que los demás servicios clínicos).
 
 
 # ── helpers de conversión segura ──────────────────────────────────────────

@@ -36,14 +36,53 @@ class AnimalService:
         self.authorizer = Authorizer(usuario_actual)
 
     def obtener_siguiente_codigo(self) -> str:
-        """Usa el contador atómico de la BD para evitar colisiones si borran registros."""
+        """Usa el contador atómico de la BD para evitar colisiones si borran registros.
+
+        Fase 6 (DB-M9 / GUI-L10 / GUI-L11): este método CONSUME el
+        contador (``db_manager.consumir_codigo``). Para previsualizar el
+        próximo código SIN consumirlo (ej. al abrir un diálogo de nuevo
+        paciente), usar ``preview_siguiente_codigo``. El flujo correcto:
+
+            dialog.__init__  →  svc.preview_siguiente_codigo()  # preview
+            dialog._on_save  →  svc.consumir_codigo()           # consume
+
+        Antes, los diálogos llamaban a ``obtener_siguiente_codigo`` al
+        abrir, lo que consumía el código aunque el usuario cancelara —
+        cada cancelación dejaba un hueco en la secuencia PAC-XXXX.
+        """
         # RBAC: cualquier usuario autenticado puede previsualizar el código
         self.authorizer.require_authenticated()
         try:
-            return self.db_manager.generar_codigo('PAC')
+            return self.db_manager.consumir_codigo('PAC')
         except Exception as e:
             logger.error(f"Error generando código PAC: {e}")
             return "PAC-001"
+
+    def preview_siguiente_codigo(self) -> str:
+        """Retorna el próximo código PAC-XXXX SIN consumirlo (read-only).
+
+        Fase 6 (DB-M9): mirror de ``MuestraService.preview_siguiente_codigo``
+        para PAC. Pensado para que el diálogo de nuevo paciente muestre
+        "Próximo código: PAC-0042" sin gastar el número si el usuario
+        cancela. El consumo real ocurre en ``consumir_codigo`` (o el
+        alias histórico ``obtener_siguiente_codigo``).
+        """
+        self.authorizer.require_authenticated()
+        try:
+            return self.db_manager.preview_siguiente_codigo('PAC')
+        except Exception as e:
+            logger.error(f"Error previsualizando código PAC: {e}")
+            return "PAC-001"
+
+    def consumir_codigo(self) -> str:
+        """Consumo atómico del siguiente código PAC-XXXX.
+
+        Fase 6 (DB-M9): alias explícito y semántico de
+        ``obtener_siguiente_codigo`` para simetría con
+        ``preview_siguiente_codigo``. La GUI debe llamar a este método
+        solo cuando el formulario se guarda exitosamente.
+        """
+        return self.obtener_siguiente_codigo()
 
     def obtener_animal(self, animal_id: int) -> Animal:
         # RBAC: cualquier usuario autenticado puede consultar

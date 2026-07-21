@@ -110,7 +110,14 @@ class SearchBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._debounce_timer = QTimer()
+        # Fase 6 (G-L5): antes ``QTimer()`` sin parent — el timer
+        # quedaba huérfano en la jerarquía Qt. Si la SearchBar se
+        # destruía (por ejemplo, al cambiar de vista), el timer
+        # seguía vivo hasta que Python GC lo recolectara, pero podía
+        # emitir ``timeout`` a un slot ya destruido → crash "C++
+        # object deleted" en PySide6. Pasar ``self`` como parent
+        # asegura la limpieza automática con la jerarquía.
+        self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.timeout.connect(self._emit_search)
 
@@ -172,17 +179,38 @@ class DataTable(QTableWidget):
         self.horizontalHeader().setStretchLastSection(True)
 
     def setup_columns(self, columns, col_widths=None):
-        """Configura las columnas de la tabla"""
+        """Configura las columnas de la tabla.
+
+        Fase 6 (G-L9): ``col_widths`` ahora acepta ``None`` en
+        entradas individuales para indicar "esta columna no tiene
+        ancho fijo; hereda el modo de resize del header". Antes,
+        pasar ``None`` en la lista hacía que ``setColumnWidth(i, None)``
+        crasheara con ``TypeError``. Ahora se salta esa entrada y
+        deja la columna con el modo por defecto (que el caller puede
+        sobreescribir después con ``setSectionResizeMode(col, mode)``).
+        """
         self.setColumnCount(len(columns))
         self.setHorizontalHeaderLabels(columns)
 
         if col_widths:
             for i, width in enumerate(col_widths):
+                if width is None:
+                    # El caller puede setear el modo de resize
+                    # después (ej. ``setSectionResizeMode(i, Stretch)``).
+                    continue
                 self.setColumnWidth(i, width)
+            # Si al menos una columna tuvo ``None``, no seteamos el
+            # modo Stretch global (entraría en conflicto con los
+            # anchos fijos ya seteados). El caller decide.
+            if not any(w is None for w in col_widths):
+                # Todas las columnas tienen ancho fijo → las que no
+                # se hayan tocado quedan con el modo por defecto.
+                pass
         else:
             self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
-    def populate(self, data, row_getter, tag_getter=None):
+    def populate(self, data, row_getter, tag_getter=None,
+                 empty_message="No hay registros"):
         """
         Rellena la tabla con datos
 
@@ -190,11 +218,35 @@ class DataTable(QTableWidget):
             data: lista de objetos
             row_getter: función que recibe objeto y retorna lista de valores
             tag_getter: función que recibe objeto y retorna tupla de tags
+            empty_message: mensaje a mostrar cuando ``data`` está vacío.
+                Fase 6 (G-M6): antes, si ``data`` era ``[]``, la tabla
+                quedaba en blanco total (sin filas, sin mensaje), lo
+                que parecía un bug de carga. Ahora se inserta una fila
+                única que ocupa todas las columnas (``setSpan``) con
+                el mensaje en cursiva gris, indicando visualmente que
+                no hay registros (no que la app se colgó).
         """
         self.setRowCount(0)  # Limpiar
 
         if not data:
             logger.debug("DataTable: No hay datos para mostrar")
+            # Fase 6 (G-M6): empty-state visible. Una sola fila, el
+            # mensaje ocupa todas las columnas. Estilo cursiva gris
+            # para diferenciarlo de una fila de datos real.
+            self.setRowCount(1)
+            n_cols = max(self.columnCount(), 1)
+            msg_item = QTableWidgetItem(empty_message)
+            msg_item.setFlags(Qt.NoItemFlags)  # no seleccionable/editable
+            msg_item.setForeground(QColor(150, 150, 150))
+            # Italic + tamaño consistente con el resto de la tabla.
+            from PySide6.QtGui import QFont
+            font = QFont()
+            font.setItalic(True)
+            msg_item.setFont(font)
+            # Centrado horizontal y vertical.
+            msg_item.setTextAlignment(Qt.AlignCenter)
+            self.setItem(0, 0, msg_item)
+            self.setSpan(0, 0, 1, n_cols)
             return
 
         logger.debug(f"DataTable: Cargando {len(data)} filas")

@@ -164,9 +164,15 @@ class MuestrasView(QWidget):
         self.table.setup_columns(columns, col_widths)
         self.table.setMinimumHeight(400)
 
-        # ✅ SOLUCIÓN AL CRASH: Usamos un lambda para ignorar el argumento 'index'
-        self.table.doubleClicked.connect(
-            lambda index: self._ingresar_resultados())
+        # Fase 6 (G-M3): antes se usaba ``lambda index: ...`` para
+        # "ignorar" el argumento ``QModelIndex`` que emite la señal
+        # ``doubleClicked``. Eso es innecesario: PySide6 descarta
+        # automáticamente los argumentos extra cuando el slot acepta
+        # menos parámetros que la señal. Pasar la referencia directa
+        # al método es más limpio, más eficiente (sin closure) y
+        # permite a Qt resolver el slot en tiempo de compilación del
+        # MOC en lugar de en runtime.
+        self.table.doubleClicked.connect(self._ingresar_resultados)
 
         table_layout.addWidget(self.table)
         parent_layout.addWidget(table_container, 1)
