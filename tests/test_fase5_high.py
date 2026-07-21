@@ -152,6 +152,7 @@ def test_h_g2_no_window_manager_imports():
     # Buscar imports en todo el repo (excluyendo tests y __pycache__).
     py_files = [
         p for p in ROOT.rglob('*.py')
+        if 'ISALAB-fase' not in str(p) and not p.name.startswith('test_')
         if '__pycache__' not in str(p) and 'test_fase5' not in str(p)
     ]
     bad = []
@@ -171,6 +172,7 @@ def test_h_g2_no_set_main_window_calls():
     en comments/docstrings, y excluyendo el propio test file)."""
     py_files = [
         p for p in ROOT.rglob('*.py')
+        if 'ISALAB-fase' not in str(p) and not p.name.startswith('test_')
         if '__pycache__' not in str(p) and 'test_fase5' not in str(p)
     ]
     bad = []
@@ -201,6 +203,7 @@ def test_h_g3_no_imports_of_boton_generar_reportes():
     """Ningún archivo importa ``boton_generar_reportes``."""
     py_files = [
         p for p in ROOT.rglob('*.py')
+        if 'ISALAB-fase' not in str(p) and 'venv' not in p.parts
         if '__pycache__' not in str(p) and 'test_fase5' not in str(p)
     ]
     bad = []

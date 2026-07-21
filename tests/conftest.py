@@ -16,6 +16,14 @@ import tempfile
 from pathlib import Path
 from typing import Iterator
 
+# --- HACK: AISLAR DB ---
+_temp_dir = tempfile.mkdtemp(prefix="isalab_test_")
+_temp_db_path = os.path.join(_temp_dir, "test_isalab.db")
+os.environ["ISALAB_DB_PATH"] = _temp_db_path
+os.environ["ISALAB_PRODUCTION_MODE"] = "0"
+os.environ["ISALAB_LOG_LEVEL"] = "WARNING"
+# -----------------------
+
 import pytest
 
 
@@ -27,9 +35,9 @@ import pytest
 
 
 @pytest.fixture(scope="session")
-def tmp_db_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def tmp_db_path() -> Path:
     """Ruta absoluta a una DB SQLite temporal para toda la sesión de tests."""
-    return tmp_path_factory.mktemp("db") / "test_isalab.db"
+    return Path(_temp_db_path)
 
 
 @pytest.fixture(scope="session", autouse=True)

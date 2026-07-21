@@ -33,7 +33,8 @@ class LoginDialog(QDialog):
         # checkbox "Mostrar contraseña" + advertencia de Bloq Mayús.
         self.setFixedSize(420, 440)
 
-        self.usuario_service = UsuarioService()
+        # Fase 5 (issue HIGH): lazy-init — no instanciar en __init__
+        self._usuario_service = None
         self.drag_position = QPoint()  # Para arrastrar la ventana
 
         self._build_ui()
@@ -271,6 +272,18 @@ class LoginDialog(QDialog):
     # Ahora: log completo vía ``logger.error`` (para debugging), pero
     # al usuario solo se le muestra un mensaje genérico idéntico en
     # ambos casos. Cierra el vector de enumeración de usuarios.
+
+    @property
+    def usuario_service(self):
+        """Lazy-init de UsuarioService."""
+        if self._usuario_service is None:
+            self._usuario_service = UsuarioService()
+        return self._usuario_service
+
+    @usuario_service.setter
+    def usuario_service(self, value):
+        """Permite inyectar un servicio (para tests/mocking)."""
+        self._usuario_service = value
 
     def _do_login(self):
         username = self.username.text().strip()

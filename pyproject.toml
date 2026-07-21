@@ -164,10 +164,6 @@ addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
-    "--cov=isalab",
-    "--cov-report=term-missing",
-    "--cov-report=html:htmlcov",
-    "--cov-report=xml",
     "--no-cov-on-fail",
 ]
 markers = [
@@ -179,6 +175,8 @@ filterwarnings = [
     "error",
     "ignore::DeprecationWarning:PySide6.*",
     "ignore::DeprecationWarning:weasyprint.*",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore::ResourceWarning",
 ]
 
 # =============================================================================

@@ -7,6 +7,7 @@ from gui_pyside.dialogs.base_dialog import BaseDialog
 from gui_pyside.dialogs.animal_dialog import NuevoAnimalDialog
 from gui_pyside.components.components import ErrorHandler
 from gui_pyside.utils.messages import show_warning
+from gui_pyside.utils.services import LazyService
 from services.recepcion_service import RecepcionService
 from services.animal_service import AnimalService
 from config import QT_STYLES, ESTADOS_RECEPCION, MOTIVOS_CONSULTA
@@ -67,12 +68,12 @@ MODERN_STYLES = """
 
 class NuevaRecepcionDialog(BaseDialog):
     """Diálogo para nueva recepción - VERSIÓN MEJORADA"""
+    service = LazyService(RecepcionService)
+    animal_service = LazyService(AnimalService)
 
     def __init__(self, parent=None, on_save=None):
         super().__init__(parent, "Nueva Recepción", 900, 480)
         self.on_save = on_save
-        self.service = RecepcionService()
-        self.animal_service = AnimalService()
         self._build()
 
     def _build(self):
@@ -387,12 +388,12 @@ class NuevaRecepcionDialog(BaseDialog):
 
 class EstadoRecepcionDialog(BaseDialog):
     """Diálogo para cambiar estado de recepción"""
+    service = LazyService(RecepcionService)
 
     def __init__(self, parent=None, recepcion_id=None, on_save=None):
         super().__init__(parent, "Cambiar Estado de Recepción", 400, 220)
         self.recepcion_id = recepcion_id
         self.on_save = on_save
-        self.service = RecepcionService()
         self._build()
 
     def _build(self):
@@ -434,11 +435,11 @@ class EstadoRecepcionDialog(BaseDialog):
 
 class DetalleRecepcionDialog(BaseDialog):
     """Diálogo para ver detalles de recepción"""
+    service = LazyService(RecepcionService)
 
     def __init__(self, parent=None, recepcion_id=None):
         super().__init__(parent, "Detalles de la Recepción", 500, 420)
         self.recepcion_id = recepcion_id
-        self.service = RecepcionService()
         self._build()
 
     def _build(self):

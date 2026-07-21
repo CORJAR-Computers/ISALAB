@@ -9,6 +9,7 @@ from gui_pyside.dialogs.animal_dialog import NuevoAnimalDialog
 from gui_pyside.utils.messages import show_error, show_warning
 from gui_pyside.styles import IsaStyles, style_input, style_button, style_group
 from gui_pyside.components.components import ErrorHandler
+from gui_pyside.utils.services import LazyService
 from services.vacuna_service import VacunaService
 from services.animal_service import AnimalService
 from config import VACUNAS_DISPONIBLES, DESPARASITANTES, VIAS_ADMINISTRACION, ICONS, DIALOG_SIZES
@@ -18,14 +19,15 @@ logger = setup_logger()
 
 
 class NuevaVacunacionDialog(BaseDialog):
+    service = LazyService(VacunaService)
+    animal_service = LazyService(AnimalService)
+
     def __init__(self, parent=None, on_save=None):
         width, height = DIALOG_SIZES['large']
         super().__init__(
             parent, f"{
                 ICONS['add']} Registro Preventivo", width, height)
         self.on_save = on_save
-        self.service = VacunaService()
-        self.animal_service = AnimalService()
         self._build()
 
     def _build(self):
@@ -177,13 +179,14 @@ class NuevaVacunacionDialog(BaseDialog):
 
 
 class DetalleVacunacionDialog(BaseDialog):
+    service = LazyService(VacunaService)
+
     def __init__(self, parent=None, vacuna_id=None):
         width, height = DIALOG_SIZES['medium']
         super().__init__(
             parent, f"{
                 ICONS['view']} Detalle Aplicación", width, height)
         self.vacuna_id = vacuna_id
-        self.service = VacunaService()
         self._build()
 
     def _build(self):

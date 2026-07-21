@@ -254,10 +254,11 @@ def main():
         sys.exit(1)
 
     # 1. Inicializamos el gestor de iconos.
-    # Usar BUNDLE_DIR (no Path.cwd()) para que funcione en modo congelado
-    # (.exe): el CWD del usuario puede no ser el directorio del bundle.
+    # Usar ASSETS_DIR (no Path.cwd() ni BUNDLE_DIR) para que funcione
+    # en modo congelado (.exe): el CWD del usuario puede no ser el
+    # directorio del bundle. ASSETS_DIR ya apunta a BUNDLE_DIR/assets.
     # Ver issue H9 del análisis.
-    inicializar_manager(BUNDLE_DIR)
+    inicializar_manager(ASSETS_DIR)
 
     # Cargar icono directamente desde archivo .ico para Windows
     ico_path = ASSETS_DIR / "icono.ico"

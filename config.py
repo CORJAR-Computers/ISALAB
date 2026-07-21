@@ -164,12 +164,6 @@ BRAND_COLORS = {
     'info':     '#0E7490',
 }
 
-# CustomTkinter appearance
-CTK_CONFIG = {
-    'appearance_mode': 'light',   # 'light' | 'dark' | 'system'
-    'color_theme':     'blue',
-}
-
 # Database
 DB_CONFIG = {
     'database':          str(DB_PATH),

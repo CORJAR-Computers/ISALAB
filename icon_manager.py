@@ -16,6 +16,8 @@ from PySide6.QtCore import QSize
 from typing import Optional
 import logging
 
+from config import ASSETS_DIR
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,25 +31,25 @@ class IconManager:
     # Orden de preferencia para cargar iconos
     PREFERENCIAS = {
         'app': [
-            'assets/icono.ico',  # Icono principal de la app
-            'assets/isalab-icon-large-256-256x256.png',
-            'assets/isalab-icon-xl-512-512x512.png',
-            'assets/isalab-icon-256x256.png',
-            'assets/isalab-icon.png',
-            'assets/isalab-icon.ico',
-            'assets/isalab-icon.svg',
+            'icono.ico',  # Icono principal de la app
+            'isalab-icon-large-256-256x256.png',
+            'isalab-icon-xl-512-512x512.png',
+            'isalab-icon-256x256.png',
+            'isalab-icon.png',
+            'isalab-icon.ico',
+            'isalab-icon.svg',
         ],
         'favicon': [
-            'assets/icono.ico',
-            'assets/isalab-icon-favicon-32-32x32.png',
-            'assets/favicon.png',
-            'assets/isalab-icon.ico',
+            'icono.ico',
+            'isalab-icon-favicon-32-32x32.png',
+            'favicon.png',
+            'isalab-icon.ico',
         ],
         'splash': [
-            'assets/icono.ico',
-            'assets/isalab-icon-xl-512-512x512.png',
-            'assets/isalab-icon-large-256-256x256.png',
-            'assets/isalab-icon.png',
+            'icono.ico',
+            'isalab-icon-xl-512-512x512.png',
+            'isalab-icon-large-256-256x256.png',
+            'isalab-icon.png',
         ]
     }
 
@@ -58,7 +60,7 @@ class IconManager:
         Args:
             carpeta_base: Carpeta base para buscar assets (default: directorio actual)
         """
-        self.carpeta_base = carpeta_base or Path.cwd()
+        self.carpeta_base = carpeta_base or ASSETS_DIR
         self._cache = {}  # Caché de iconos cargados
 
         logger.debug("IconManager inicializado con base: %s", self.carpeta_base)
@@ -240,7 +242,7 @@ def _ejemplo():
     )
 
     # Inicializar
-    manager = IconManager(Path.cwd())
+    manager = IconManager(ASSETS_DIR)
 
     # Ver información
     logging.info(manager.obtener_info())

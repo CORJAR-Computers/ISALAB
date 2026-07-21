@@ -430,6 +430,18 @@ def test_C2_two_recepciones_do_not_collide(clean_current_user, tmp_path):
 # C3 — Jinja2 autoescape + WeasyPrint sandbox
 # ─────────────────────────────────────────────────────────────────────────────
 
+import sys
+from unittest.mock import MagicMock
+sys.modules['weasyprint'] = MagicMock()
+sys.modules['weasyprint.text'] = MagicMock()
+sys.modules['weasyprint.text.fonts'] = MagicMock()
+sys.modules['reportlab'] = MagicMock()
+sys.modules['reportlab.graphics'] = MagicMock()
+sys.modules['reportlab.lib'] = MagicMock()
+sys.modules['reportlab.graphics.barcode'] = MagicMock()
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
+@pytest.mark.filterwarnings("ignore::ResourceWarning")
 def test_C3_generators_jinja_env_has_autoescape():
     """
     Issue C3: ``reports.generators._build_jinja_env`` debe construir un

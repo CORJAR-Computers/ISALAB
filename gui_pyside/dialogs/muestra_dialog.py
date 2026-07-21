@@ -32,6 +32,7 @@ from gui_pyside.dialogs.animal_dialog import NuevoAnimalDialog
 from gui_pyside.components.components import ErrorHandler
 from gui_pyside.components.forms import LoadingOverlay
 from gui_pyside.utils.messages import show_error, show_warning
+from gui_pyside.utils.services import LazyService
 from utils.logger import setup_logger
 
 logger = setup_logger()
@@ -128,10 +129,11 @@ class PDFProWorker(QThread):
 
 
 class PacienteSelector(QWidget):
+    animal_service = LazyService(AnimalService)
+
     def __init__(self, parent=None, on_nuevo_callback=None):
         super().__init__(parent)
         self.on_nuevo_callback = on_nuevo_callback
-        self.animal_service = AnimalService()
         self._setup_ui()
         self._cargar_animales()
 
@@ -194,10 +196,11 @@ class PacienteSelector(QWidget):
 
 
 class NuevaMuestraDialog(BaseDialog):
+    service = LazyService(MuestraService)
+
     def __init__(self, parent=None, on_save=None):
         super().__init__(parent, "🧪 Nueva Muestra de Laboratorio", 900, 520)
         self.on_save = on_save
-        self.service = MuestraService()
         self._build()
 
     def _build(self):
@@ -541,11 +544,12 @@ class NuevaMuestraDialog(BaseDialog):
 
 
 class ResultadoMuestraDialog(BaseDialog):
+    service = LazyService(MuestraService)
+
     def __init__(self, parent=None, muestra_id=None, on_save=None):
         super().__init__(parent, "🧪 Ingresar Resultados de Laboratorio", 1000, 720)
         self.muestra_id = muestra_id
         self.on_save = on_save
-        self.service = MuestraService()
         self._build()
         self._cargar_datos()
 
@@ -1018,10 +1022,11 @@ class ResultadoMuestraDialog(BaseDialog):
 
 
 class DetalleMuestraDialog(BaseDialog):
+    service = LazyService(MuestraService)
+
     def __init__(self, parent=None, muestra_id=None):
         super().__init__(parent, "📄 Reporte de Muestra", 1000, 600)
         self.muestra_id = muestra_id
-        self.service = MuestraService()
         # Fase 6 (G-M8): overlay de carga para el botón "Imprimir
         # Resultados Pro" (spawn de ``PDFProWorker``). Lazy-init: se
         # crea solo si el usuario dispara la impresión. ``parent=self``

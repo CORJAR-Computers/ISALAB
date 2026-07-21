@@ -25,13 +25,39 @@ class RecepcionView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.service = RecepcionService()
-        self.historia_service = HistoriaService()
+        # Fase 5 (issue HIGH): lazy-init para servicios — no instanciar en
+        # __init__ porque hace imposible swapear el contexto (tests, mock, etc.).
+        self._service = None
+        self._historia_service = None
         self.current_filtros = {}
         self.setObjectName("recepcionView")
 
         self._build_layout()
         self._cargar_datos()
+
+    @property
+    def service(self):
+        """Lazy-init de RecepcionService."""
+        if self._service is None:
+            self._service = RecepcionService()
+        return self._service
+
+    @service.setter
+    def service(self, value):
+        """Permite inyectar un servicio (para tests/mocking)."""
+        self._service = value
+
+    @property
+    def historia_service(self):
+        """Lazy-init de HistoriaService."""
+        if self._historia_service is None:
+            self._historia_service = HistoriaService()
+        return self._historia_service
+
+    @historia_service.setter
+    def historia_service(self, value):
+        """Permite inyectar un servicio (para tests/mocking)."""
+        self._historia_service = value
 
     def _build_layout(self):
         """Construye el layout de la vista"""

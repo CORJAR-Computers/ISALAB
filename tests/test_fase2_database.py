@@ -200,7 +200,7 @@ def test_animal_repository_update_persists_all_fields(tmp_db_path: Path):
         propietario_documento="1234567890",
         propietario_direccion="Calle 123",
         propietario_oficio="Ingeniero",
-        sexo="M",
+        sexo="Macho",
         color="Café",
         tipo_pelo="Corto",
         senas_particulares="Mancha blanca",
@@ -228,7 +228,7 @@ def test_animal_repository_update_persists_all_fields(tmp_db_path: Path):
     a.propietario_documento = "9876543210"
     a.propietario_direccion = "Carrera 456"
     a.propietario_oficio = "Médica"
-    a.sexo = "F"
+    a.sexo = "Hembra"
     a.color = "Blanco"
     a.tipo_pelo = "Largo"
     a.senas_particulares = "Cola cortada"
@@ -239,7 +239,7 @@ def test_animal_repository_update_persists_all_fields(tmp_db_path: Path):
     a.peso = 4.2
     a.telefono = "555-5678"
     a.email = "maria@test.com"
-    a.estado = "Inactivo"
+    a.estado = "Dado de Alta"
     a.observaciones = "Modificado"
 
     repo.update(a)
@@ -248,8 +248,9 @@ def test_animal_repository_update_persists_all_fields(tmp_db_path: Path):
     a_loaded = repo.get_by_id(animal_id)
     assert a_loaded.nombre == "Test Perro Modificado"
     assert a_loaded.especie == "Felino"
+    assert a_loaded.raza == "Siamés"
     # Los 12 campos que antes se perdían:
-    assert a_loaded.sexo == "F", "sexo se perdió en update"
+    assert a_loaded.sexo == "Hembra", "sexo se perdió en update"
     assert a_loaded.color == "Blanco", "color se perdió en update"
     assert a_loaded.tipo_pelo == "Largo", "tipo_pelo se perdió en update"
     assert a_loaded.senas_particulares == "Cola cortada", \
@@ -266,6 +267,10 @@ def test_animal_repository_update_persists_all_fields(tmp_db_path: Path):
         "propietario_direccion se perdió en update"
     assert a_loaded.propietario_oficio == "Médica", \
         "propietario_oficio se perdió en update"
+    assert a_loaded.telefono == "555-5678", "telefono se perdió"
+    assert a_loaded.email == "maria@test.com", "email se perdió"
+    assert a_loaded.estado == "Dado de Alta", "estado se perdió"
+    assert a_loaded.observaciones == "Modificado", "observaciones se perdieron"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
