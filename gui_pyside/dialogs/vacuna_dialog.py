@@ -256,8 +256,11 @@ class DetalleVacunacionDialog(BaseDialog):
         self.worker.start()
 
     def _pdf_exito(self, ruta_pdf):
-        import os
-        os.startfile(ruta_pdf)
+        # Fase 4 (C4): `os.startfile` solo existe en Windows —
+        # usamos el helper multiplataforma para no romper el botón
+        # "🖨️ Imprimir Certificado" en macOS/Linux.
+        from gui_pyside.utils.platform_utils import open_file_externally
+        open_file_externally(ruta_pdf)
         # ⚠️ CAMBIO 3: Restaurar el texto correcto del botón
         self.btn_imprimir.setText("🖨️ Imprimir Certificado")
         self.btn_imprimir.setEnabled(True)

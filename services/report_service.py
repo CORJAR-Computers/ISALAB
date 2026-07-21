@@ -64,6 +64,15 @@ class ReportService:
         stats['tiempo_promedio'] = round(
             row['promedio'], 1) if row and row['promedio'] else 0
 
+        # Fase 4 (C2): consultas registradas hoy. Antes el dashboard
+        # mostraba "0" permanentemente porque `refresh()` era no-op.
+        # Esta stat alimenta la 3ra tarjeta ("Consultas Hoy").
+        row = self.db.fetch_one(
+            "SELECT COUNT(*) as total FROM consultas WHERE date(fecha_hora) = ?",
+            (hoy,)
+        )
+        stats['consultas_hoy'] = row['total'] if row else 0
+
         return stats
 
     def get_efficiency_metrics(self):
