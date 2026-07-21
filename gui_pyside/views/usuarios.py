@@ -9,7 +9,8 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
-    QCheckBox)
+    QCheckBox,
+    QDialog)
 from PySide6.QtCore import Qt, Signal
 from services.usuario_service import UsuarioService
 from gui_pyside.dialogs.usuario_dialog import UsuarioDialog
@@ -133,14 +134,19 @@ class UsuariosView(QWidget):
 
     def _nuevo_usuario(self):
         dialog = UsuarioDialog(self, usuario_actual=self.usuario_actual)
-        if dialog.exec():
+        # Fase 5 (H-G6): ``QDialog.exec()`` retorna un ``int`` (0 para
+        #Rejected, 1 para Accepted). ``if dialog.exec():`` funciona por
+        # accidente porque 1 es truthy, pero es frágil y no idiomático.
+        # Comparar contra ``QDialog.Accepted`` es el patrón correcto.
+        if dialog.exec() == QDialog.Accepted:
             self._cargar_datos()
 
     def _editar_usuario(self, usuario_id):
         try:
             usuario = self.service.obtener_usuario(usuario_id)
             dialog = UsuarioDialog(self, usuario, self.usuario_actual)
-            if dialog.exec():
+            # Fase 5 (H-G6): mismo patrón que en ``_nuevo_usuario``.
+            if dialog.exec() == QDialog.Accepted:
                 self._cargar_datos()
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))

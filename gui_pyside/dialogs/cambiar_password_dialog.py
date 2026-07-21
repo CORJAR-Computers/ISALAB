@@ -54,7 +54,10 @@ class CambiarPasswordDialog(BaseDialog):
         # Nueva contraseña
         self.txt_nueva = QLineEdit()
         self.txt_nueva.setEchoMode(QLineEdit.Password)
-        self.txt_nueva.setPlaceholderText("Mínimo 6 caracteres")
+        # Fase 5 (H-S2): antes decía "Mínimo 6 caracteres" pero el
+        # servicio ``validar_fortaleza_password`` exige 8. Mostramos el
+        # requisito real para no confundir al usuario.
+        self.txt_nueva.setPlaceholderText("Mínimo 8 caracteres, 1 mayúscula, 1 minúscula, 1 número")
         style_input(self.txt_nueva)
         form.addRow("Nueva Contraseña *:", self.txt_nueva)
 
@@ -87,7 +90,10 @@ class CambiarPasswordDialog(BaseDialog):
         self.txt_nueva.textChanged.connect(self._check_seguridad)
 
     def _check_seguridad(self, text):
-        if len(text) < 6:
+        # Fase 5 (H-S2): el umbral visual ahora es 8 (consistente con
+        # ``validar_fortaleza_password``). Antes era 6, lo que mostraba
+        # "Aceptable" para contraseñas que el servicio iba a rechazar.
+        if len(text) < 8:
             self.lbl_seguridad.setText(f"{ICONS['warning']} Muy débil")
             self.lbl_seguridad.setStyleSheet(
                 f"color: {IsaStyles.DANGER}; font-size: 11px;")
@@ -101,9 +107,19 @@ class CambiarPasswordDialog(BaseDialog):
                 f"color: {IsaStyles.SUCCESS}; font-size: 11px;")
 
     def _guardar(self):
-        actual = self.txt_actual.text().strip()
-        nueva = self.txt_nueva.text().strip()
-        confirmar = self.txt_confirmar.text().strip()
+        # Fase 5 (H-S2): NO hacemos ``.strip()`` sobre las contraseñas.
+        # Antes, ``self.txt_nueva.text().strip()`` eliminaba espacios en
+        # blanco a los lados, lo que significa que un usuario que
+        # intencionalmente incluyera un espacio al inicio/final de su
+        # contraseña NO podía loguearse después (el formulario de login
+        # tampoco hace strip, así que la contraseña no coincidía).
+        # Peor aún: el servicio ``cambiar_password`` SÍ recibe la
+        # contraseña sin strip y la valida con ``validar_fortaleza_password``,
+        # por lo que un espacio al final que el usuario vio en el campo
+        # se eliminaba silenciosamente aquí.
+        actual = self.txt_actual.text()
+        nueva = self.txt_nueva.text()
+        confirmar = self.txt_confirmar.text()
 
         errores = []
 
@@ -120,9 +136,11 @@ class CambiarPasswordDialog(BaseDialog):
                 }}
             """)
 
-        if len(nueva) < 6:
+        # Fase 5 (H-S2): umbral consistent con ``validar_fortaleza_password``
+        # (8 caracteres mínimo, antes era 6 aquí).
+        if len(nueva) < 8:
             errores.append(
-                "La nueva contraseña debe tener al menos 6 caracteres")
+                "La nueva contraseña debe tener al menos 8 caracteres")
 
         if errores:
             show_warning(self,

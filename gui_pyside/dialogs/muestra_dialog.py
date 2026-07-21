@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QApplication,
     QAbstractItemView)
-from PySide6.QtCore import Qt, QDate, QThread, Signal
+from PySide6.QtCore import Qt, QDate, QThread, Signal, QObject, QEvent
 import os
 import json
 
@@ -34,6 +34,96 @@ from gui_pyside.utils.messages import show_error, show_warning
 from utils.logger import setup_logger
 
 logger = setup_logger()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fase 5 (H-G7): Event filter para "pegado mágico" en tabla de resultados.
+# ─────────────────────────────────────────────────────────────────────────────
+# Antes, ``ResultadoMuestraDialog`` monkey-patcheaba
+# ``self.tabla_resultados.keyPressEvent = self._pegar_magico_en_tabla`` para
+# interceptar Ctrl+V y pegar filas parseadas desde el portapapeles. Eso
+# rompía encapsulación y era frágil. Este event filter hace lo mismo
+# pero por el mecanismo oficial de Qt (``installEventFilter``), sin
+# tocar la clase original de ``QTableWidget``.
+
+
+class _PegadoMagicoFilter(QObject):
+    """Intercepta ``Ctrl+V`` sobre una ``QTableWidget`` y delega al handler.
+
+    El ``handler`` es un callable ``(event) -> bool`` que recibe el
+    ``QEvent`` original (cast a ``QKeyEvent`` por el caller). Si retorna
+    ``True``, el evento se considera manejado y NO se propaga al widget;
+    si retorna ``False``, el evento sigue su curso normal (comportamiento
+    por defecto de ``QTableWidget``).
+    """
+
+    def __init__(self, target_table, handler):
+        super().__init__(target_table)  # parent = target → se limpia solo
+        self._handler = handler
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_V and (
+                    event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+                # Delegar al handler del diálogo. Si consume el evento
+                # (retorna True o None), marcamos como manejado.
+                result = self._handler(event)
+                if result is not False:
+                    return True
+        # Propagar al widget original.
+        return super().eventFilter(obj, event)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fase 5 (H-G8): PDFProWorker hoisted de método anidado → clase de módulo.
+# ─────────────────────────────────────────────────────────────────────────────
+# Antes, ``PDFProWorker`` se definía DENTRO de ``_imprimir_pdf`` como
+# clase anidada, lo que significa que Python RE-CREABA la clase en cada
+# click del botón "Imprimir Resultados Pro" (definición nueva, dirs
+# nuevos en ``sys.modules``, etc.). Peor aún, el ``QThread`` arrancado
+# no tenía ``finished`` conectado ni ``deleteLater()``, así que cada
+# click acumulaba un QThread zombie hasta que el GC de Python lo
+# recolectara (eventualmente, si es que lo hacía — Qt mantiene refs
+# internas que pueden impedirlo).
+#
+# Ahora ``PDFProWorker`` es una clase de módulo (se define una sola vez
+# al importar) y el diálogo conecta su señal ``finished`` a
+# ``deleteLater()`` para que Qt limpie el QThread al terminar.
+
+
+class PDFProWorker(QThread):
+    """Worker thread para generar PDF de resultados de laboratorio.
+
+    Emite ``terminado(bytes)`` con el contenido del PDF al terminar
+    exitosamente, o ``error(str)`` con el mensaje de error si falla.
+    La señal ``finished`` (de ``QThread``) se conecta externamente a
+    ``deleteLater()`` para limpiar el thread.
+    """
+
+    terminado = Signal(bytes)
+    error = Signal(str)
+
+    def __init__(self, muestra_id, es_empresa, datos_empresa, parent=None):
+        super().__init__(parent)
+        self.muestra_id = muestra_id
+        self.es_empresa = es_empresa
+        self.datos_empresa = datos_empresa
+
+    def run(self):
+        try:
+            # Import diferido para evitar import circular en tests sin
+            # WeasyPrint instalado.
+            from services.report_laboratorio import ReporteLaboratorioService
+            svc = ReporteLaboratorioService()
+            pdf_bytes = svc.generar_pdf(
+                self.muestra_id,
+                es_empresa=self.es_empresa,
+                datos_empresa=self.datos_empresa
+            )
+            self.terminado.emit(pdf_bytes)
+        except Exception as e:
+            logger.error(f"PDFProWorker falló: {e}", exc_info=True)
+            self.error.emit(str(e))
 
 
 class PacienteSelector(QWidget):
@@ -508,7 +598,22 @@ class ResultadoMuestraDialog(BaseDialog):
                 font-weight: bold;
             }}
         """)
-        self.tabla_resultados.keyPressEvent = self._pegar_magico_en_tabla
+        # Fase 5 (H-G7): antes se monkey-patcheaba ``keyPressEvent``
+        # directamente sobre la instancia:
+        #     self.tabla_resultados.keyPressEvent = self._pegar_magico_en_tabla
+        # Eso rompía encapsulación (sobrescribía un método de instancia
+        # sin subclass) y era frágil: cualquier código externo que
+        # guardara referencia a ``tabla_resultados.keyPressEvent`` perdía
+        # la sobreescritura, y PySide6 puede no respetar la asignación
+        # directa de métodos Python sobre objetos C++.
+        #
+        # Ahora se usa un ``QObject`` event filter instalado vía
+        # ``installEventFilter``, que es el mecanismo oficial de Qt para
+        # interceptar eventos sin subclassing. El filter sólo intercepta
+        # ``Ctrl+V``; todo lo demás pasa al handler original.
+        self._pegado_magico_filter = _PegadoMagicoFilter(
+            self.tabla_resultados, self._pegar_magico_en_tabla)
+        self.tabla_resultados.installEventFilter(self._pegado_magico_filter)
         right_layout.addWidget(self.tabla_resultados, 1)
 
         # ✅ CAMPO DE OBSERVACIONES
@@ -620,41 +725,48 @@ class ResultadoMuestraDialog(BaseDialog):
     # ══════════════════════════════════════════════════════════════
 
     def _pegar_magico_en_tabla(self, event):
-        if event.key() == Qt.Key_V and (
-                event.modifiers() & Qt.KeyboardModifier.ControlModifier):
-            clipboard = QApplication.clipboard().text()
-            if not clipboard:
-                return
-            import re
-            patron_numero = re.compile(r'(\d+[.,]?\d*)')
-            lineas = clipboard.strip().split('\n')
-            fila_inicial = self.tabla_resultados.rowCount()
-            nuevas_filas = 0
-            datos_temporales = []
-            for linea in lineas:
-                if not linea.strip():
-                    continue
-                match = patron_numero.search(linea.strip())
-                if not match:
-                    continue
-                pos = match.start()
-                nombre = linea[:pos].strip()
-                resto = linea[pos:].strip()
-                partes = resto.split(None, 2)
-                datos_temporales.append([nombre, partes[0].strip().replace(',', '.'), partes[1].strip(
-                ) if len(partes) > 1 else "", partes[2].strip() if len(partes) > 2 else ""])
-                nuevas_filas += 1
-            if nuevas_filas == 0:
-                return
-            self.tabla_resultados.setRowCount(fila_inicial + nuevas_filas)
-            for i, datos in enumerate(datos_temporales):
-                fila = fila_inicial + i
-                for col, texto in enumerate(datos):
-                    self.tabla_resultados.setItem(
-                        fila, col, QTableWidgetItem(texto))
-            event.accept()
-        else:
-            QTableWidget.keyPressEvent(self.tabla_resultados, event)
+        """Pega filas parseadas desde el portapapeles a la tabla de resultados.
+
+        Fase 5 (H-G7): antes este método se asignaba directamente como
+        ``self.tabla_resultados.keyPressEvent`` (monkey-patch sobre la
+        instancia), por lo que tenía que manejar también el caso "no es
+        Ctrl+V" llamando a ``QTableWidget.keyPressEvent(self.tabla_resultados,
+        event)``. Ahora el método solo se invoca cuando el event filter
+        ``_PegadoMagicoFilter`` ya confirmó que es Ctrl+V; el resto de
+        las teclas pasa directo al widget original.
+        """
+        clipboard = QApplication.clipboard().text()
+        if not clipboard:
+            return False
+        import re
+        patron_numero = re.compile(r'(\d+[.,]?\d*)')
+        lineas = clipboard.strip().split('\n')
+        fila_inicial = self.tabla_resultados.rowCount()
+        nuevas_filas = 0
+        datos_temporales = []
+        for linea in lineas:
+            if not linea.strip():
+                continue
+            match = patron_numero.search(linea.strip())
+            if not match:
+                continue
+            pos = match.start()
+            nombre = linea[:pos].strip()
+            resto = linea[pos:].strip()
+            partes = resto.split(None, 2)
+            datos_temporales.append([nombre, partes[0].strip().replace(',', '.'), partes[1].strip(
+            ) if len(partes) > 1 else "", partes[2].strip() if len(partes) > 2 else ""])
+            nuevas_filas += 1
+        if nuevas_filas == 0:
+            return False
+        self.tabla_resultados.setRowCount(fila_inicial + nuevas_filas)
+        for i, datos in enumerate(datos_temporales):
+            fila = fila_inicial + i
+            for col, texto in enumerate(datos):
+                self.tabla_resultados.setItem(
+                    fila, col, QTableWidgetItem(texto))
+        event.accept()
+        return True
 
     # ══════════════════════════════════════════════════════════════
     # INTELIGENCIA: COLOREAR Y ANALIZAR RANGOS
@@ -1049,38 +1161,31 @@ class DetalleMuestraDialog(BaseDialog):
         self.btn_imprimir.setText("Generando Reporte Pro... ⏳")
         self.btn_imprimir.setEnabled(False)
 
-        from services.report_laboratorio import ReporteLaboratorioService
-
         muestra = self.service.obtener_muestra(self.muestra_id)
         entidad = getattr(muestra, 'empresa', None) or 'Persona Natural'
         es_empresa = entidad.strip().upper() != "PERSONA NATURAL"
         datos_empresa = {"nombre": entidad} if es_empresa else None
 
-        class PDFProWorker(QThread):
-            terminado = Signal(bytes)
-            error = Signal(str)
-
-            def __init__(self, muestra_id, es_empresa, datos_empresa):
-                super().__init__()
-                self.muestra_id = muestra_id
-                self.es_empresa = es_empresa
-                self.datos_empresa = datos_empresa
-
-            def run(self):
-                try:
-                    svc = ReporteLaboratorioService()
-                    pdf_bytes = svc.generar_pdf(
-                        self.muestra_id,
-                        es_empresa=self.es_empresa,
-                        datos_empresa=self.datos_empresa
-                    )
-                    self.terminado.emit(pdf_bytes)
-                except Exception as e:
-                    self.error.emit(str(e))
-
-        self.worker = PDFProWorker(self.muestra_id, es_empresa, datos_empresa)
+        # Fase 5 (H-G8): ``PDFProWorker`` ahora es clase de módulo (no
+        # anidada en este método). Conectamos ``finished`` a
+        # ``deleteLater()`` para que Qt limpie el QThread al terminar,
+        # evitando la fuga de threads que ocurría antes (cada click
+        # acumulaba un QThread zombie).
+        # Si ya había un worker corriendo (doble-click rápido), lo
+        # cancelamos y dejamos que Qt lo limpie.
+        if getattr(self, 'worker', None) is not None and \
+                self.worker.isRunning():
+            try:
+                self.worker.quit()
+                self.worker.wait(2000)  # 2s de gracia
+            except Exception:
+                pass
+        self.worker = PDFProWorker(
+            self.muestra_id, es_empresa, datos_empresa, parent=self)
         self.worker.terminado.connect(self._pdf_exito)
         self.worker.error.connect(self._pdf_error)
+        # Limpieza automática al terminar (éxito o error).
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
     def _pdf_exito(self, pdf_bytes):

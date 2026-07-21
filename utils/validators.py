@@ -118,6 +118,16 @@ class MuestraValidator(Validator):
             cls.validate_length(data.get('codigo'), 'Código',
                                 VALIDACIONES['codigo_muestra']['min'],
                                 VALIDACIONES['codigo_muestra']['max'])
+            # Fase 5 (H-S3): aplicar también el ``pattern`` de
+            # ``VALIDACIONES['codigo_muestra']`` (``^[A-Z0-9-]+$``). Antes
+            # este chequeo NO se hacía, permitiendo caracteres como ``/``,
+            # ``\``, ``..`` o ``;`` en el código de la muestra. Esos
+            # caracteres fluyen luego a ``pdf_service.ruta_default`` que
+            # construye nombres de archivo como ``LAB_{codigo}.pdf`` —
+            # con ``../`` en el código se podía escribir PDFs fuera del
+            # directorio ``data/pdfs/`` (path traversal).
+            cls.validate_pattern(data.get('codigo'), 'Código de Muestra',
+                                 VALIDACIONES['codigo_muestra']['pattern'])
         except ValidationError as e:
             errores.append(str(e))
 

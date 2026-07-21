@@ -402,18 +402,13 @@ class RecepcionView(QWidget):
                 "Por favor seleccione una recepción")
         return recepcion_id
 
-    def _get_selected_animal_id(self):
-        """Obtiene el ID del animal de la recepción seleccionada"""
-        current_row = self.table.currentRow()
-        if current_row >= 0:
-            # La columna 3 es el código del animal
-            item = self.table.item(current_row, 3)
-            if item and item.text() and item.text() != '—':
-                # El código está en formato "CODIGO", necesitamos obtener el ID
-                # Por ahora retornamos None, pero idealmente deberíamos tener
-                # el ID
-                pass
-        return None
+    # Fase 5 (H-G4): ``_get_selected_animal_id`` eliminado — era dead
+    # code. El cuerpo tenía literalmente ``pass`` seguido de
+    # ``return None``, así que SIEMPRE retornaba None. Nunca fue
+    # invocado desde la vista ni desde ningún diálogo. Su existencia
+    # confundía a futuros desarrolladores que podían creer que había
+    # una forma de obtener el animal_id seleccionado, cuando en
+    # realidad había que pasar por ``obtener_recepcion(rid).animal_id``.
 
     def _nueva_recepcion(self):
         """Abre diálogo para nueva recepción"""

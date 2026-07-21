@@ -13,6 +13,12 @@ from PySide6.QtCore import Signal
 class DashboardView(QWidget):
     """Vista principal del dashboard"""
 
+    # Fase 5 (H-G5): la señal ``theme_changed`` se declaraba DESPUÉS del
+    # método ``_toggle_theme`` que la emite. Funcionaba solo por
+    # class-attribute lookup en PySide6, pero es misleading y propenso
+    # a romperse en refactorings. Movida al inicio de la clase.
+    theme_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.theme_btn = None
@@ -70,9 +76,6 @@ class DashboardView(QWidget):
 
         # Emit signal for other views
         self.theme_changed.emit()
-
-    # Señal para notificar a las vistas del cambio de tema
-    theme_changed = Signal()
 
     def _build_layout(self):
         """Construye el layout del dashboard"""

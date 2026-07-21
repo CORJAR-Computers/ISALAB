@@ -1,5 +1,6 @@
 # orm_models/clinica.py
-from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, DateTime
+from sqlalchemy.sql import func
 from database.connection import Base
 
 class MovimientoORM(Base):
@@ -12,6 +13,9 @@ class MovimientoORM(Base):
     motivo = Column(Text, nullable=False)
     responsable = Column(String(100), nullable=False)
     destino = Column(String(150))
+    # Fase 5 (H-D3): ``created_at`` mapeado (la columna ya existía en la
+    # BD gracias a la migración de Fase 2; solo faltaba declararla acá).
+    created_at = Column(DateTime, server_default=func.now())
 
 class MuestraORM(Base):
     __tablename__ = "muestras"
@@ -31,6 +35,8 @@ class MuestraORM(Base):
     tecnico = Column(String(100))
     veterinario_ref = Column(String(100))
     urgente = Column(Integer, default=0)
+    # Fase 5 (H-D3)
+    created_at = Column(DateTime, server_default=func.now())
 
 class RecepcionORM(Base):
     __tablename__ = "recepciones"
@@ -44,6 +50,8 @@ class RecepcionORM(Base):
     estado = Column(String(20), default="En espera")
     proxima_cita = Column(String(20))
     observaciones = Column(Text)
+    # Fase 5 (H-D3)
+    created_at = Column(DateTime, server_default=func.now())
 
 class HistoriaClinicaORM(Base):
     __tablename__ = "historias_clinicas"
@@ -80,6 +88,8 @@ class HistoriaClinicaORM(Base):
     tratamiento = Column(Text)
     pronostico = Column(Text)
     veterinario = Column(String(100))
+    # Fase 5 (H-D3)
+    created_at = Column(DateTime, server_default=func.now())
 
 class ConsultaORM(Base):
     __tablename__ = "consultas"
@@ -97,6 +107,8 @@ class ConsultaORM(Base):
     proxima_consulta = Column(String(20))
     veterinario = Column(String(100))
     observaciones = Column(Text)
+    # Fase 5 (H-D3)
+    created_at = Column(DateTime, server_default=func.now())
 
 class CirugiaORM(Base):
     __tablename__ = "cirugias"
@@ -117,6 +129,8 @@ class CirugiaORM(Base):
     complicaciones = Column(Text)
     cuidados_post = Column(Text)
     estado = Column(String(20), default="Programada")
+    # Fase 5 (H-D3)
+    created_at = Column(DateTime, server_default=func.now())
 
 class VacunacionORM(Base):
     __tablename__ = "vacunaciones"
@@ -133,3 +147,5 @@ class VacunacionORM(Base):
     fecha_proxima = Column(String(20))
     veterinario = Column(String(100))
     observaciones = Column(Text)
+    # Fase 5 (H-D3)
+    created_at = Column(DateTime, server_default=func.now())

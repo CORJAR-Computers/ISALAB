@@ -65,7 +65,8 @@ def _setup_test_db() -> None:
         CREATE TABLE IF NOT EXISTS animales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT, codigo TEXT, estado TEXT,
-            fecha_ingreso TEXT
+            fecha_ingreso TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     db.execute("""
@@ -80,7 +81,8 @@ def _setup_test_db() -> None:
     db.execute("""
         CREATE TABLE IF NOT EXISTS consultas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_hora TEXT
+            fecha_hora TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 

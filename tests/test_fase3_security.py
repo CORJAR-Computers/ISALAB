@@ -75,7 +75,8 @@ def _setup_test_db(tmp_path: Path) -> None:
             veterinario TEXT,
             estado TEXT DEFAULT 'Pendiente',
             proxima_cita TEXT,
-            observaciones TEXT
+            observaciones TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -92,7 +93,8 @@ def _setup_test_db(tmp_path: Path) -> None:
             email TEXT,
             fecha_ingreso TEXT,
             estado TEXT DEFAULT 'Activo',
-            observaciones TEXT
+            observaciones TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
