@@ -34,3 +34,7 @@ class DuplicateError(IsaLabException):
 
 class AuthenticationError(IsaLabException):
     """Error de autenticación (usuario o contraseña incorrectos)"""
+
+
+class AuthorizationError(IsaLabException):
+    """Error de autorizacion (sin permisos suficientes)"""

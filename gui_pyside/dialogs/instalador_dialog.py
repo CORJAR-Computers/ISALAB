@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from gui_pyside.dialogs.base_dialog import BaseDialog
 from gui_pyside.styles import IsaStyles
-from gui_pyside.utils.services import LazyService
 from services.usuario_service import UsuarioService
 from services.configuracion_service import ConfiguracionService
 from utils.security import validar_fortaleza_password
@@ -16,11 +15,11 @@ from gui_pyside.components.components import ErrorHandler
 
 class InstaladorDialog(BaseDialog):
     """Wizard de instalación inicial para crear el primer usuario administrador y configurar el laboratorio."""
-    service = LazyService(UsuarioService)
-    config_service = LazyService(ConfiguracionService)
 
     def __init__(self, parent=None):
         super().__init__(parent, "🐾 IsaLab - Instalación Inicial", 500, 680)
+        self.service = UsuarioService()
+        self.config_service = ConfiguracionService()
         self._build_ui()
         self._connect_signals()
 

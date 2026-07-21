@@ -16,38 +16,27 @@ from reports import (
     DatosLaboratorio,
 )
 from utils.logger import setup_logger
-from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class ReporteVacunacionService:
-    """Genera PDFs de certificados de vacunación / desparasitación.
+    """Genera PDFs de certificados de vacunación / desparasitación."""
 
-    Fase 3 (issue C1 — RBAC bypass): toda generación de PDF requiere
-    rol ``asistente`` o superior.
-    """
-
-    def __init__(self, usuario_actual: Optional[dict] = None):
+    def __init__(self):
         self.vacuna_repo = VacunacionRepository()
         self.animal_repo = AnimalRepository()
         self.lab = DatosLaboratorio()
-        self.authorizer = Authorizer(usuario_actual)
-
-    def _check_perm(self) -> None:
-        self.authorizer.require_role('asistente')
 
     # ── API pública ──────────────────────────────────────────────────────
 
     def generar_pdf(self, vacunacion_id: int) -> bytes:
-        self._check_perm()
         contexto = self._construir_contexto(vacunacion_id)
         return generar_reporte("vacunacion", contexto)
 
     def generar_y_guardar(
         self, vacunacion_id: int, ruta_salida: str
     ) -> str:
-        self._check_perm()
         contexto = self._construir_contexto(vacunacion_id)
         return generar_por_tipo("vacunacion", contexto, ruta_salida)
 

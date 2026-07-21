@@ -8,30 +8,21 @@ from PySide6.QtCore import Qt
 from config import get_theme_colors, CURRENT_THEME, toggle_theme, generate_qt_stylesheet
 from gui_pyside.components.components import ErrorHandler
 from PySide6.QtCore import Signal
+from utils.logger import setup_logger
+
+logger = setup_logger()
 
 
 class DashboardView(QWidget):
     """Vista principal del dashboard"""
 
-    # Fase 5 (H-G5): la señal ``theme_changed`` se declaraba DESPUÉS del
-    # método ``_toggle_theme`` que la emite. Funcionaba solo por
-    # class-attribute lookup en PySide6, pero es misleading y propenso
-    # a romperse en refactorings. Movida al inicio de la clase.
-    theme_changed = Signal()
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.theme_btn = None
         self.current_theme = None
-        # Fase 4 (C2): referencias a los QLabel de valor de cada tarjeta
-        # de estadística, para que `refresh()` pueda actualizarlos sin
-        # reconstruir todo el layout. Antes, las 4 tarjetas mostraban
-        # "0" permanentemente porque `refresh()` era un no-op.
         self.stat_labels = {}
         self.setObjectName("dashboardView")
         self._build_layout()
-        # Carga inicial de datos reales desde el servicio.
-        self.refresh()
 
     def _get_theme(self):
         return get_theme_colors()
@@ -55,8 +46,6 @@ class DashboardView(QWidget):
 
         # Rebuild with new theme colors
         self._build_layout()
-        # Tras reconstruir, recargar datos para no perder los valores.
-        self.refresh()
 
     def _toggle_theme(self):
         """Cambia entre temas light/dark"""
@@ -76,6 +65,9 @@ class DashboardView(QWidget):
 
         # Emit signal for other views
         self.theme_changed.emit()
+
+    # Señal para notificar a las vistas del cambio de tema
+    theme_changed = Signal()
 
     def _build_layout(self):
         """Construye el layout del dashboard"""
@@ -127,24 +119,16 @@ class DashboardView(QWidget):
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
 
-        # Fase 4 (C2): guardamos referencias a los QLabel de valor para
-        # que `refresh()` pueda actualizarlos in-place. Antes el valor
-        # quedaba hardcodeado en "0" y `refresh()` era un no-op.
-        card1 = self._create_stat_card(
-            "Total Pacientes", "0", theme['primary'], key='activos')
-        cards_layout.addWidget(card1)
-
-        card2 = self._create_stat_card(
-            "Muestras Pendientes", "0", theme['warning'], key='pendientes')
-        cards_layout.addWidget(card2)
-
-        card3 = self._create_stat_card(
-            "Consultas Hoy", "0", theme['accent'], key='consultas_hoy')
-        cards_layout.addWidget(card3)
-
-        card4 = self._create_stat_card(
-            "Urgentes", "0", theme['danger'], key='urgentes')
-        cards_layout.addWidget(card4)
+        self.stat_labels = {}
+        for key, title, color in [
+            ('pacientes', 'Total Pacientes', theme['primary']),
+            ('pendientes', 'Muestras Pendientes', theme['warning']),
+            ('consultas_hoy', 'Consultas Hoy', theme['accent']),
+            ('urgentes', 'Muestras Urgentes', theme['danger']),
+        ]:
+            card, value_label = self._create_stat_card(title, '...', color)
+            self.stat_labels[key] = value_label
+            cards_layout.addWidget(card)
 
         layout.addLayout(cards_layout)
 
@@ -166,12 +150,8 @@ class DashboardView(QWidget):
 
         layout.addStretch()
 
-    def _create_stat_card(self, title, value, color, key=None):
-        """Crea una tarjeta de estadística.
-
-        `key` (str|None): si se pasa, el QLabel de valor se guarda en
-        `self.stat_labels[key]` para que `refresh()` pueda actualizarlo.
-        """
+    def _create_stat_card(self, title, value, color):
+        """Crea una tarjeta de estadística. Retorna (card, value_label)."""
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
@@ -194,9 +174,6 @@ class DashboardView(QWidget):
         """)
         layout.addWidget(value_label)
 
-        if key is not None:
-            self.stat_labels[key] = value_label
-
         title_label = QLabel(title)
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setStyleSheet("""
@@ -207,43 +184,28 @@ class DashboardView(QWidget):
         """)
         layout.addWidget(title_label)
 
-        return card
+        return card, value_label
 
     @ErrorHandler.handle_exception
     def refresh(self):
-        """Refresca los datos del dashboard desde el servicio.
-
-        Fase 4 (C2): antes este método era un no-op con un comentario
-        "Aquí cargarías datos reales desde los servicios" — las 4
-        tarjetas quedaban en "0" sin importar el contenido de la BD.
-        Ahora invoca `ReportService.get_dashboard_stats()` y vuelca
-        los conteos en los QLabel correspondientes. El método es
-        tolerante: si el servicio falla, los labels conservan su
-        valor previo (no se rompe la UI).
-        """
-        from services.report_service import ReportService
-
+        """Refresca los datos del dashboard con conteos reales de la BD."""
         try:
-            svc = ReportService()
-            stats = svc.get_dashboard_stats()
-        except Exception:
-            # El ErrorHandler decorador ya loguea la traza; aquí sólo
-            # evitamos que un fallo puntual del servicio deje la vista
-            # en un estado inconsistente.
-            return
+            from database.connection import DatabaseManager
+            db = DatabaseManager()
 
-        # Mapeo stat → key interno del QLabel guardado en _build_layout.
-        mapping = {
-            'activos': stats.get('activos', 0),
-            'pendientes': stats.get('muestras_pendientes', 0),
-            'consultas_hoy': stats.get('consultas_hoy', 0),
-            'urgentes': stats.get('urgentes', 0),
-        }
-        for key, value in mapping.items():
-            label = self.stat_labels.get(key)
-            if label is not None:
-                # `int(...)` para evitar "3.0" en renderizado.
-                try:
-                    label.setText(str(int(value)))
-                except (TypeError, ValueError):
-                    label.setText(str(value))
+            total_pacientes = db.fetch_one(
+                "SELECT COUNT(*) as c FROM animales")['c']
+            muestras_pendientes = db.fetch_one(
+                "SELECT COUNT(*) as c FROM muestras WHERE estado = 'Pendiente'")['c']
+            consultas_hoy = db.fetch_one(
+                "SELECT COUNT(*) as c FROM consultas WHERE date(fecha) = date('now')")['c']
+            urgentes = db.fetch_one(
+                "SELECT COUNT(*) as c FROM muestras WHERE urgente = 1 AND estado != 'Completado' AND estado != 'Descartado'")['c']
+
+            self.stat_labels['pacientes'].setText(str(total_pacientes))
+            self.stat_labels['pendientes'].setText(str(muestras_pendientes))
+            self.stat_labels['consultas_hoy'].setText(str(consultas_hoy))
+            self.stat_labels['urgentes'].setText(str(urgentes))
+
+        except Exception as e:
+            logger.error(f"Error cargando estadísticas del dashboard: {e}")

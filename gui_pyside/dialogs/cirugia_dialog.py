@@ -12,7 +12,6 @@ from gui_pyside.dialogs.animal_dialog import NuevoAnimalDialog
 from gui_pyside.utils.messages import show_error, show_warning
 from gui_pyside.styles import IsaStyles, style_button, style_group, style_input
 from gui_pyside.components.components import ErrorHandler, StatusBadge
-from gui_pyside.utils.services import LazyService
 from services.cirugia_service import CirugiaService
 from services.animal_service import AnimalService
 from config import ESTADOS_CIRUGIA, TIPOS_CIRUGIA, TIPOS_ANESTESIA, ICONS, DIALOG_SIZES
@@ -22,15 +21,14 @@ logger = setup_logger()
 
 
 class NuevaCirugiaDialog(BaseDialog):
-    service = LazyService(CirugiaService)
-    animal_service = LazyService(AnimalService)
-
     def __init__(self, parent=None, on_save=None):
         width, height = DIALOG_SIZES['xlarge']
         super().__init__(
             parent, f"{
                 ICONS['add']} Programar Cirugía", width, height)
         self.on_save = on_save
+        self.service = CirugiaService()
+        self.animal_service = AnimalService()
         self._build()
 
     def _build(self):
@@ -283,7 +281,6 @@ class EditarCirugiaDialog(NuevaCirugiaDialog):
 
 class EstadoCirugiaDialog(BaseDialog):
     """Diálogo para cambiar el estado de una cirugía"""
-    service = LazyService(CirugiaService)
 
     def __init__(self, parent=None, cirugia_id=None, on_save=None):
         width, height = DIALOG_SIZES['small']
@@ -292,6 +289,7 @@ class EstadoCirugiaDialog(BaseDialog):
                 ICONS['edit']} Actualizar Estado", width, height)
         self.cirugia_id = cirugia_id
         self.on_save = on_save
+        self.service = CirugiaService()
         self._build()
 
     def _build(self):
@@ -355,7 +353,6 @@ class EstadoCirugiaDialog(BaseDialog):
 
 class DetalleCirugiaDialog(BaseDialog):
     """Diálogo para ver detalles de una cirugía"""
-    service = LazyService(CirugiaService)
 
     def __init__(self, parent=None, cirugia_id=None):
         width, height = DIALOG_SIZES['xlarge']
@@ -363,6 +360,7 @@ class DetalleCirugiaDialog(BaseDialog):
             parent, f"{
                 ICONS['view']} Reporte Quirúrgico", width, height)
         self.cirugia_id = cirugia_id
+        self.service = CirugiaService()
         self._build()
 
     def _build(self):

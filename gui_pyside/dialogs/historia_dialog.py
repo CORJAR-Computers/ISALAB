@@ -9,7 +9,6 @@ from gui_pyside.dialogs.base_dialog import BaseDialog
 from gui_pyside.styles import IsaStyles, style_input, style_button, style_group
 from gui_pyside.components.components import ErrorHandler
 from gui_pyside.utils.messages import show_error, show_warning
-from gui_pyside.utils.services import LazyService
 from services.historia_service import HistoriaService
 from services.recepcion_service import RecepcionService
 from config import ICONS
@@ -22,9 +21,6 @@ PRONOSTICOS = ['Bueno', 'Reservado', 'Grave', 'Pendiente']
 # NUEVA HISTORIA CLÍNICA (3 Pestañas Avanzadas)
 # =============================================================================
 class NuevaHistoriaDialog(BaseDialog):
-    service = LazyService(HistoriaService)
-    rec_svc = LazyService(RecepcionService)
-
     def __init__(self, parent=None, on_save=None, recepcion_id=None):
         width, height = 950, 750
         super().__init__(
@@ -32,6 +28,8 @@ class NuevaHistoriaDialog(BaseDialog):
                 ICONS['add']} Nueva Historia Clínica", width, height)
         self.on_save = on_save
         self.recepcion_id = recepcion_id
+        self.service = HistoriaService()
+        self.rec_svc = RecepcionService()
         self._build()
 
     def _build(self):
@@ -478,14 +476,13 @@ class EditarHistoriaDialog(NuevaHistoriaDialog):
 # DETALLE DE HISTORIA CLÍNICA (con impresión PDF)
 # =============================================================================
 class DetalleHistoriaDialog(BaseDialog):
-    service = LazyService(HistoriaService)
-    pdf_service = LazyService(PDFService)
-
     def __init__(self, parent=None, historia_id=None):
         width, height = 900, 700
         super().__init__(
             parent, f"{
                 ICONS['view']} Detalle Historia Clínica", width, height)
+        self.service = HistoriaService()
+        self.pdf_service = PDFService()
 
         # Manejar errores de base de datos
         try:

@@ -21,29 +21,17 @@ from reports import (
     ColoresMarca, ConfiguracionReporte, Margenes,
 )
 from utils.logger import setup_logger
-from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class ReporteLaboratorioService:
-    """Genera PDFs de resultados de laboratorio (persona natural y empresa).
+    """Genera PDFs de resultados de laboratorio (persona natural y empresa)."""
 
-    Fase 3 (issue C1 — RBAC bypass):
-        Toda generación de PDF requiere rol ``asistente`` o superior.
-        Cualquier usuario autenticado puede generar reportes (no se
-        requiere rol clínico), pero se exige autenticación para evitar
-        generación anónima desde procesos externos.
-    """
-
-    def __init__(self, usuario_actual: Optional[dict] = None):
-        self.muestra_svc = MuestraService(usuario_actual)
-        self.animal_svc = AnimalService(usuario_actual)
+    def __init__(self):
+        self.muestra_svc = MuestraService()
+        self.animal_svc = AnimalService()
         self.lab = DatosLaboratorio()
-        self.authorizer = Authorizer(usuario_actual)
-
-    def _check_perm(self) -> None:
-        self.authorizer.require_role('asistente')
 
     # ── API pública ──────────────────────────────────────────────────────
 
@@ -55,7 +43,6 @@ class ReporteLaboratorioService:
             datos_empresa: Optional[Dict[str, str]] = None,
     ) -> bytes:
         """Retorna los bytes del PDF listo para streaming / descarga."""
-        self._check_perm()
         contexto = self._construir_contexto(
             muestra_id, resultados_estructurados, es_empresa, datos_empresa
         )
@@ -72,7 +59,6 @@ class ReporteLaboratorioService:
         datos_empresa: Optional[Dict[str, str]] = None,
     ) -> bytes:
         """Genera el PDF y lo guarda en disco. Retorna la ruta."""
-        self._check_perm()
         contexto = self._construir_contexto(
             muestra_id, resultados_estructurados, es_empresa, datos_empresa
         )
@@ -204,12 +190,7 @@ class ReporteLaboratorioService:
             "fecha_entrega": formatear_fecha(muestra.fecha_entrega) if muestra.fecha_entrega else None,
             "tecnico": muestra.tecnico or "—",
             "veterinario_ref": muestra.veterinario_ref or "—",
-            # Fase 6 (S-M7): ``Muestra.es_urgente`` es un MÉTODO, no una
-            # property (ver ``database/models.py:93``). Sin los paréntesis,
-            # Jinja recibía el objeto ``bound method`` y lo evaluaba como
-            # truthy siempre, mostrando el badge "URGENTE" en todos los
-            # reportes. Llamamos con paréntesis para obtener el booleano.
-            "urgente": muestra.es_urgente(),
+            "urgente": muestra.es_urgente,
             # Resultados
             "secciones": secciones,
             "resultados_planos": resultados,

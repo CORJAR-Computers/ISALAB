@@ -10,51 +10,31 @@ from pathlib import Path
 ROOT = Path(os.getcwd())
 ASSETS = ROOT / "assets"
 TEMPLATES = ROOT / "templates"
-ALEMBIC_DIR = ROOT / "alembic"
-ALEMBIC_INI = ROOT / "alembic.ini"
+DATA_DIR = ROOT / "data"
 MANIFEST = ROOT / "isalab.manifest"
 
-# Incluir carpetas completas con todos sus archivos.
-#
-# NOTA DE SEGURIDAD (issue C2):
-#   NO se incluye el directorio `data/` en el bundle. Hacerlo enviaría
-#   la base de datos local del desarrollador (con hashes de contraseñas
-#   reales y PHI de pacientes) dentro de cada .exe distribuido.
-#   El directorio `data/` se crea vacío en tiempo de ejecución mediante
-#   `DatabaseManager.__init__` / `config.DB_PATH.parent.mkdir(exist_ok=True)`.
+# Incluir carpetas completas con todos sus archivos
 datas = [
     (str(ASSETS), "assets"),
     (str(TEMPLATES), "templates"),
-    (str(ALEMBIC_DIR), "alembic"),
-    (str(ALEMBIC_INI), "."),
+    (str(DATA_DIR), "data"),
 ]
 
 # Solo los módulos de PySide6 que la app REALMENTE usa.
 # NO usar collect_submodules('PySide6') — trae QtWebEngineCore y otros
 # módulos opcionales que no están instalados en este entorno y rompen el build.
-#
-# Audit D-L6 (Fase 6):
-#   * Se removieron ``PySide6.QtSvg`` y ``PySide6.QtSvgWidgets``: grep por
-#     ``QtSvg`` en todo el codebase (.py) da 0 matches → eran peso muerto.
-#     Si en el futuro se cargan iconos SVG vía QtSvg, volver a añadirlos.
-#   * Se añadió ``icon_manager`` explícito (defensivo). PyInstaller lo
-#     autodescubre desde ``main.py``, pero lo listamos para que conste en
-#     el contrato del build y sobreviva a refactorings.
-#   * ``services.*`` y ``orm_models.*`` NO se listan: no hay imports
-#     dinámicos (verificado con ``grep -rn 'importlib\|__import__'``),
-#     así que PyInstaller los descubre transitivamente desde ``main.py``.
 hiddenimports = [
     'PySide6.QtWidgets',
     'PySide6.QtCore',
     'PySide6.QtGui',
     'PySide6.QtPrintSupport',
+    'PySide6.QtSvg',
+    'PySide6.QtSvgWidgets',
     'PySide6.QtNetwork',
     'PySide6.QtSql',
     'pyparsing',
     'pyparsing.actions',
     'pyparsing.testing',
-    # Módulos propios (la mayoría autodescubiertos, listados por claridad):
-    'icon_manager',
 ]
 
 # Módulos que PyInstaller intenta incluir pero no necesitamos
@@ -118,15 +98,6 @@ excludes = [
     'PySide6.QtUiTools',
 ]
 
-# ── Modo debug (issue D-L3/D-L4, Fase 6) ───────────────────────────────
-# ``build_app.py --debug`` exporta ``ISALAB_DEBUG=1`` en el entorno del
-# subprocess de PyInstaller. Aquí lo leemos para:
-#   * ``optimize=0`` (preserva docstrings + asserts, facilita depuración).
-#   * ``console=True`` (muestra stdout/stderr en una consola adjunta).
-# En builds de producción (sin la env var) usamos ``optimize=2`` para
-# reducir el tamaño del binario ~5-10%.
-_debug = os.getenv('ISALAB_DEBUG', '0') not in {'0', 'false', 'False'}
-
 a = Analysis(
     ['main.py'],
     pathex=[str(ROOT)],
@@ -138,7 +109,7 @@ a = Analysis(
     runtime_hooks=[],
     excludes=excludes,
     noarchive=False,
-    optimize=0 if _debug else 2,  # D-L4: 2 en producción, 0 en debug (D-L3)
+    optimize=0,
 )
 
 pyz = PYZ(a.pure)
@@ -154,10 +125,7 @@ exe = EXE(
     strip=False,
     upx=True,
     upx_exclude=[],
-    # console=False oculta la consola en producción (correcto para UI).
-    # Con ``ISALAB_DEBUG=1`` (``build_app.py --debug``) mostramos consola
-    # para ver prints y tracebacks directamente en el .exe de diagnóstico.
-    console=_debug,
+    console=False,
     disable_windowed_traceback=False,
     # Icono del ejecutable (visible en el Explorador de archivos)
     icon=str(ASSETS / 'icono.ico'),

@@ -7,7 +7,6 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 
 from gui_pyside.dialogs.base_dialog import BaseDialog
-from gui_pyside.utils.services import LazyService
 from services.animal_service import AnimalService
 from services.pdf_service import PDFService
 from gui_pyside.styles import IsaStyles, style_input, style_button
@@ -20,14 +19,13 @@ logger = setup_logger()
 
 
 class GenerarReciboDialog(BaseDialog):
-    animal_service = LazyService(AnimalService)
-    pdf_service = LazyService(PDFService)
-
     def __init__(self, parent=None):
         width, height = DIALOG_SIZES['medium']
         super().__init__(
             parent, f"{
                 ICONS['print']} Generar Recibo", width, height)
+        self.animal_service = AnimalService()
+        self.pdf_service = PDFService()
         self._build()
 
     def _build(self):
@@ -144,7 +142,10 @@ class GenerarReciboDialog(BaseDialog):
             'total': total
         }
 
-        filepath = self.pdf_service.generar_recibo(datos)
+        import os
+        from datetime import datetime
+        nombre_archivo = f"recibo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filepath = self.pdf_service.guardar_recibo(datos, nombre_archivo)
 
         reply = QMessageBox.question(
             self,

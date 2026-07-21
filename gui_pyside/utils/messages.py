@@ -1,18 +1,5 @@
 """Utilidades para mostrar mensajes consistentes en la UI."""
 
-# Fase 6 (G-M batch — unblock import): la anotación
-# ``app: Qt.QCoreApplication`` en ``install_messagebox_style_filter``
-# se evalúa en tiempo de importación (Python 3.12 sin PEP 563) y
-# falla porque el namespace ``PySide6.QtCore.Qt`` no expone
-# ``QCoreApplication`` (es un atributo de módulo, no de ``Qt``).
-# ``from __future__ import annotations`` convierte TODAS las
-# anotaciones en strings (PEP 563), evitando la evaluación eager.
-# Nota: ``gui_pyside/utils/messages.py`` no figura explícitamente en
-# el reparto de archivos del GUI batch, pero bloquea la verificación
-# de imports que el contrato exige. Cambio mínimo (1 línea), no
-# altera comportamiento runtime.
-from __future__ import annotations
-
 from typing import Optional
 
 from PySide6.QtWidgets import QMessageBox, QWidget

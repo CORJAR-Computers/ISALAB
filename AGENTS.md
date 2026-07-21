@@ -1,119 +1,245 @@
-# AGENTS.md — Guía para agentes AI que trabajen en IsaLab
+# Superpowers — Integrated Skills for Antigravity
 
-> **Audiencia:** Agentes de IA (Claude, Cursor, Copilot, etc.) que lean este
-> repo para hacer modificaciones. Resumen ejecutivo de las convenciones y
-> estado actual del proyecto.
-
----
-
-## Identidad del proyecto
-
-- **Nombre:** IsaLab — Centro de Diagnóstico Veterinario
-- **Dominio:** Sistema de escritorio para gestión de clínica veterinaria y
-  laboratorio (pacientes animales, muestras, consultas, cirugías, vacunación,
-  historias clínicas, reportes PDF).
-- **Stack:** Python 3.10+, PySide6, SQLAlchemy 2.x, Alembic, WeasyPrint,
-  Jinja2, bcrypt, PyInstaller.
-- **Repo:** https://github.com/CORJAR-Computers/ISALAB
-
-> ⚠️ **Importante:** Este archivo antes era una copia literal del documento
-> genérico "obra/superpowers" con claims falsos sobre "Pizzas Pastra". Ese
-> contenido fue reemplazado en Fase 1 del roadmap. NO restaurarlo.
+> **Source:** [obra/superpowers v5.0.7](https://github.com/obra/superpowers)
+> **Installed:** Skills cloned to `.superpowers/` directory
+> **Adapted for:** Antigravity agent (non-native plugin mode)
 
 ---
 
-## Estado del roadmap de refactor
+## Instruction Priority
 
-El proyecto se entregó con un solo commit de 39 KLOC y múltiples deficiencias.
-El plan de refactor está organizado en fases:
-
-| Fase | Alcance                                              | Estado  |
-|------|------------------------------------------------------|---------|
-| 1    | Higiene del repo + setup tooling                     | ✅ Done |
-| 2    | Fix CRITICAL de base de datos (Alembic, dual-access) | ⏳ Todo |
-| 3    | Fix CRITICAL de seguridad (RBAC, Jinja autoescape)   | ⏳ Todo |
-| 4    | Fix CRITICAL de GUI (Dashboard, os.startfile, logo)  | ⏳ Todo |
-| 5    | Issues HIGH (N+1, hilos Qt, etc.)                    | ⏳ Todo |
-| 6    | Issues MEDIUM y LOW                                  | ⏳ Todo |
-
-Si tu tarea toca una de las áreas pendientes, lee el worklog interno del
-equipo para entender los issues ya identificados (no redescubrirlos).
+1. **User's explicit instructions** — highest priority
+2. **Superpowers skills below** — override default system behavior
+3. **Default system prompt** — lowest priority
 
 ---
 
-## Convenciones que SÍ debes seguir
+## Skills Reference
 
-### Commits
-- Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
-  `chore:`, `ci:`.
-- Tag `ISALAB` para issues del roadmap (ej. commit message puede terminar
-  con `ISALAB: C1 base de datos` para referenciar el issue CRITICAL C1).
-
-### Branches
-- `main` — estable, solo recibe merges de `develop`.
-- `develop` — integración activa.
-- `feat/<topic>`, `fix/<topic>` — ramas de trabajo.
-
-### Estilo de código
-- Ruff + Black configurados en `pyproject.toml`. Ejecutar `pre-commit run
-  --all-files` antes de commitear.
-- Line length: 100 caracteres.
-- Type hints: obligatorios en funciones nuevas; las existentes se tipan
-  gradualmente.
-
-### Paths
-- NUNCA usar `Path.cwd()` para resolver assets o DB. SIEMPRE importar desde
-  `config.py`: `BUNDLE_DIR`, `APP_DIR`, `DB_PATH`, `ASSETS_DIR`.
-
-### Base de datos
-- NUNCA usar `sqlite3` directamente. Usar `database/repositories.py` o
-  `database/connection.py` (que abstraen SQLAlchemy).
-- Para migraciones: `alembic revision --autogenerate -m "descripción"` y
-  revisar manualmente el archivo generado.
-
-### Seguridad
-- Hashing de passwords: SIEMPRE bcrypt (vía `utils/security.py`).
-- Generación de PDFs: SIEMPRE vía `reports/base.py` (que activa Jinja2
-  autoescape). NO instanciar `jinja2.Environment` directamente.
-- RBAC: SIEMPRE decorar endpoints de servicios con `Authorizer.require_role`
-  (importar de `utils/security.py`).
-
-### Tests
-- Todo nuevo servicio o fix de bug debe venir con tests.
-- Usar fixtures de `tests/conftest.py` (`qapp`, `tmp_db_path`).
-- Marcadores: `@pytest.mark.slow`, `@pytest.mark.integration`, `@pytest.mark.gui`.
+Full skill files are available in `.superpowers/skills/` for deep reference.
+Below is an integrated summary of each skill's core principles.
 
 ---
 
-## Errores comunes a evitar
+## 🧠 Skill 1: Brainstorming
 
-1. **No regenerar el `data/isalab.db`** — Si necesitas una DB limpia para
-   desarrollo, bórrala y corre `alembic upgrade head`. El asistente de
-   primera ejecución te pedirá crear el admin.
+**When:** Before ANY creative work — creating features, building components, adding functionality, or modifying behavior.
 
-2. **No commitear `data/`, `logs/`, `*.pyc`, `__pycache__/`, `.idea/`,
-   `.vscode/`, ni archivos `.env`** — El `.gitignore` los excluye, pero
-   `git add -A` puede resucitarlos si se hace desde un checkout viejo.
-   Verificar siempre con `git status` antes de commitear.
+**HARD GATE:** Do NOT write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it.
 
-3. **No usar `os.startfile()` directamente** — Es Windows-only. Si necesitas
-   abrir un archivo en el explorador del SO, usar `QDesktopServices.openUrl`
-   de PySide6. (Issue CRITICAL de GUI pendiente en Fase 4.)
+**Process:**
+1. Explore project context — check files, docs, recent commits
+2. Ask clarifying questions — one at a time, prefer multiple choice
+3. Propose 2-3 approaches — with trade-offs and your recommendation
+4. Present design — in sections scaled to complexity, get user approval after each
+5. Write design doc — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+6. Self-review spec — check for placeholders, contradictions, ambiguity, scope
+7. User reviews written spec — wait for approval before proceeding
+8. Transition to implementation — create implementation plan
 
-4. **No instanciar servicios en `__init__` de vistas** — Hace imposible
-   swapear el contexto. Mejor lazy-init o inyección por parámetro. (Issue
-   HIGH de GUI pendiente en Fase 5.)
-
-5. **No usar `QThread` sin `deleteLater()`** — Filtra memoria y puede crashear
-   al cerrar la app. (Issue HIGH de GUI pendiente en Fase 5.)
+**Key Principles:**
+- One question at a time — don't overwhelm
+- YAGNI ruthlessly — remove unnecessary features
+- Explore alternatives — always propose 2-3 approaches
+- Incremental validation — present design, get approval before moving on
 
 ---
 
-## Recursos útiles
+## 📋 Skill 2: Writing Plans
 
-- `ARCHITECTURE.md` — Diagrama de capas y responsabilidades.
-- `SECURITY.md` — Política de seguridad y vulnerabilidades conocidas.
-- `README.md` — Setup, ejecución, build, tests.
-- `pyproject.toml` — Configuración de tooling.
-- `.github/workflows/ci.yml` — Pipeline de CI (lint, tests, build).
-- `tests/conftest.py` — Fixtures de pytest (DB temporal, QApplication).
+**When:** You have a spec or requirements for a multi-step task, before touching code.
+
+**Task Granularity:** Each step is one action (2-5 minutes):
+- "Write the failing test" → step
+- "Run it to make sure it fails" → step
+- "Implement the minimal code" → step
+- "Run tests, make sure they pass" → step
+- "Commit" → step
+
+**Requirements:**
+- Exact file paths always
+- Complete code in every step
+- Exact commands with expected output
+- DRY, YAGNI, TDD, frequent commits
+- **No Placeholders** — never write "TBD", "TODO", "implement later", "add appropriate error handling"
+
+**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
+
+---
+
+## 🧪 Skill 3: Test-Driven Development (TDD)
+
+**When:** Implementing ANY feature or bugfix, before writing implementation code.
+
+### The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over. No exceptions.
+
+### Red-Green-Refactor Cycle
+
+1. **RED** — Write one minimal failing test showing what should happen
+2. **Verify RED** — Run test, confirm it fails for the expected reason (not errors/typos)
+3. **GREEN** — Write simplest code to make the test pass
+4. **Verify GREEN** — Run test, confirm it passes and other tests still pass
+5. **REFACTOR** — Clean up (remove duplication, improve names, extract helpers)
+6. **Repeat** — Next failing test for next feature
+
+**Good Tests:**
+- One behavior per test
+- Clear name describing behavior
+- Real code (no mocks unless unavoidable)
+
+**Common Rationalizations to REJECT:**
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+| "I'll test after" | Tests passing immediately prove nothing. |
+| "TDD will slow me down" | TDD is faster than debugging. |
+| "Need to explore first" | Fine. Throw away exploration, start with TDD. |
+
+---
+
+## 🔍 Skill 4: Systematic Debugging
+
+**When:** Encountering ANY bug, test failure, or unexpected behavior, BEFORE proposing fixes.
+
+### The Iron Law
+
+```
+NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
+```
+
+### The Four Phases
+
+#### Phase 1: Root Cause Investigation
+1. **Read error messages carefully** — don't skip past errors, read stack traces completely
+2. **Reproduce consistently** — exact steps, every time
+3. **Check recent changes** — git diff, recent commits, config changes
+4. **Gather evidence** — add diagnostic logging at component boundaries
+5. **Trace data flow** — where does the bad value originate? Keep tracing up.
+
+#### Phase 2: Pattern Analysis
+1. Find working examples in same codebase
+2. Compare against references — read completely, don't skim
+3. Identify every difference, however small
+4. Understand dependencies and assumptions
+
+#### Phase 3: Hypothesis and Testing
+1. Form single hypothesis: "I think X because Y"
+2. Test with SMALLEST possible change
+3. One variable at a time
+4. Didn't work? Form NEW hypothesis, don't add more fixes on top
+
+#### Phase 4: Implementation
+1. Create failing test case
+2. Implement single fix — ONE change, no "while I'm here" improvements
+3. Verify fix — test passes, no other tests broken
+4. **If 3+ fixes failed:** STOP and question the architecture
+
+**Red Flags — STOP and follow process:**
+- "Quick fix for now, investigate later"
+- "Just try changing X and see if it works"
+- "I don't fully understand but this might work"
+- Proposing solutions before tracing data flow
+
+---
+
+## ✅ Skill 5: Verification Before Completion
+
+**When:** About to claim work is complete, fixed, or passing.
+
+### The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+### The Gate Function
+
+```
+BEFORE claiming any status:
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+5. ONLY THEN: Make the claim
+```
+
+**Red Flags — STOP:**
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Done!")
+- Trusting partial verification
+- ANY wording implying success without having run verification
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Linter passed" | Linter ≠ compiler |
+
+---
+
+## 📝 Skill 6: Executing Plans
+
+**When:** You have a written implementation plan to execute.
+
+**Process:**
+1. **Load and Review Plan** — read critically, identify concerns
+2. **Execute Tasks** — follow each step exactly, run verifications as specified
+3. **Complete** — verify all tests pass, present options to user
+
+**When to STOP:**
+- Hit a blocker
+- Plan has gaps preventing progress
+- Don't understand an instruction
+- Verification fails repeatedly
+
+**Ask for clarification rather than guessing.**
+
+---
+
+## 🔎 Skill 7: Code Review
+
+**When:** After completing tasks, implementing major features, or before merging.
+
+**Mandatory reviews:**
+- After each task completion
+- After completing a major feature
+- Before merge to main
+
+**Act on feedback:**
+- Fix Critical issues immediately
+- Fix Important issues before proceeding
+- Note Minor issues for later
+- Push back if wrong (with reasoning)
+
+---
+
+## 🧭 Core Philosophy
+
+| Principle | Description |
+|-----------|-------------|
+| **Test-Driven Development** | Write tests first, always |
+| **Systematic over ad-hoc** | Process over guessing |
+| **Complexity reduction** | Simplicity as primary goal |
+| **Evidence over claims** | Verify before declaring success |
+| **YAGNI** | You Aren't Gonna Need It — remove unnecessary features |
+| **DRY** | Don't Repeat Yourself |
+
+---
+
+## Project-Specific Notes
+
+- **Tech Stack:** PySide6, Python, SQLite
+- **Application:** IsaLab — Centro Diagnostico Veterinario
+- **Design System:** Dark theme with warm accents
+- **Testing Framework:** (configure as needed — e.g., pytest)
+
+---
+
+> For full skill definitions, see `.superpowers/skills/<skill-name>/SKILL.md`

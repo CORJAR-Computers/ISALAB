@@ -1,48 +1,32 @@
 # services/cirugia_service.py
 """Lógica de negocio — Cirugías (CIRU-XXXX)"""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from database.repositories import CirugiaRepository
 from database.connection import DatabaseManager
 from database.models import Cirugia
-from pydantic import ValidationError as PydanticValidationError
+from pydantic import ValidationError
 
 from schemas.clinica import CirugiaSchema
-from utils.exceptions import BusinessLogicError, ValidationError
+from utils.exceptions import BusinessLogicError
 from utils.logger import setup_logger
-from utils.security import Authorizer
-from config import ESTADOS_CIRUGIA
 
 logger = setup_logger()
 
 
 class CirugiaService:
-    """Servicio de cirugías.
-
-    Fase 3 (issue C1 — RBAC bypass):
-        - ``programar_cirugia``, ``actualizar_estado`` y
-          ``actualizar_cirugia`` requieren rol ``veterinario`` o
-          superior (son acciones clínicas).
-        - Lectura solo requiere usuario autenticado.
-    """
-
-    def __init__(self, usuario_actual: Optional[dict] = None):
+    def __init__(self):
         self.repo = CirugiaRepository()
         self.db_manager = DatabaseManager()
-        self.authorizer = Authorizer(usuario_actual)
 
     def generar_codigo(self) -> str:
         """Genera código correlativo de manera atómica."""
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.db_manager.generar_codigo('CIRU')
 
     def programar_cirugia(self, data: Dict[str, Any]) -> Cirugia:
-        # RBAC: requiere rol veterinario o superior
-        self.authorizer.require_role('veterinario')
-
         try:
+            self._validar(data)
             # Generar código automáticamente si no se proporciona
             if not data.get('codigo'):
                 data['codigo'] = self.generar_codigo()
@@ -70,7 +54,7 @@ class CirugiaService:
             logger.info(f"Cirugía registrada: {cirugia.codigo}")
             return cirugia
 
-        except PydanticValidationError as e:
+        except ValidationError as e:
             error_msg = "\n".join(
                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
             logger.error(f"Error Pydantic en cirugía: {error_msg}")
@@ -81,45 +65,31 @@ class CirugiaService:
             raise
 
     def obtener_cirugia(self, cid: int) -> Cirugia:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_by_id(cid)
 
     def listar_cirugias(self, filtros: dict = None) -> List[Cirugia]:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_all(filtros)
 
     def cirugias_por_paciente(self, animal_id: int) -> List[Cirugia]:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_by_animal(animal_id)
 
     def actualizar_estado(self, cid: int, estado: str,
                           complicaciones: str = None) -> None:
-        # RBAC: requiere rol veterinario o superior
-        self.authorizer.require_role('veterinario')
-        # Fase 5 (H-S4): validar ``estado`` contra whitelist
-        # ``ESTADOS_CIRUGIA``. Antes se aceptaba CUALQUIER string.
-        if estado not in ESTADOS_CIRUGIA:
-            raise ValidationError(
-                f"Estado '{estado}' no válido. Estados permitidos: "
-                f"{', '.join(ESTADOS_CIRUGIA)}")
         self.repo.get_by_id(cid)
         self.repo.update_estado(cid, estado, complicaciones)
         logger.info(f"Cirugía {cid} → estado: {estado}")
 
     def actualizar_cirugia(self, cid: int, data: dict) -> None:
-        # RBAC: requiere rol veterinario o superior
-        self.authorizer.require_role('veterinario')
         cg = self.repo.get_by_id(cid)
         cg.tipo_cirugia = data.get('tipo_cirugia', cg.tipo_cirugia)
         cg.descripcion = data.get('descripcion', cg.descripcion)
         cg.anestesia = data.get('anestesia', cg.anestesia)
         cg.protocolo_anestesico = data.get(
             'protocolo_anestesico', cg.protocolo_anestesico)
-        cg.duracion_min = int(data['duracion_min']) if data.get(
-            'duracion_min') else cg.duracion_min
+        try:
+            cg.duracion_min = int(data['duracion_min'])
+        except (ValueError, TypeError):
+            cg.duracion_min = cg.duracion_min
         cg.cirujano = data.get('cirujano', cg.cirujano)
         cg.anestesiologo = data.get('anestesiologo', cg.anestesiologo)
         cg.asistente = data.get('asistente', cg.asistente)
@@ -129,8 +99,15 @@ class CirugiaService:
         self.repo.update(cg)
         logger.info(f"Cirugía {cid} actualizada")
 
-    # Fase 6 (S-M2): eliminado ``_validar`` muerto. Era dead code —
-    # ningún caller lo invocaba (``programar_cirugia`` valida vía
-    # ``CirugiaSchema`` de Pydantic). Replicaba reglas ya expresadas
-    # en ``schemas/clinica.py::CirugiaSchema`` (animal_id > 0,
-    # tipo_cirugia min_length=1, fecha obligatoria).
+    def _validar(self, data: dict) -> None:
+        errores = []
+        if not data.get('animal_id'):
+            errores.append("Debe seleccionar un paciente")
+        if not data.get('tipo_cirugia', '').strip():
+            errores.append("El tipo de cirugía es obligatorio")
+        if not data.get('fecha'):
+            errores.append("La fecha es obligatoria")
+        if errores:
+            raise ValidationError(
+                "Datos de cirugía inválidos", {
+                    'errores': errores})

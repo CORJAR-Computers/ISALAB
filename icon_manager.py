@@ -16,8 +16,6 @@ from PySide6.QtCore import QSize
 from typing import Optional
 import logging
 
-from config import ASSETS_DIR
-
 logger = logging.getLogger(__name__)
 
 
@@ -31,25 +29,25 @@ class IconManager:
     # Orden de preferencia para cargar iconos
     PREFERENCIAS = {
         'app': [
-            'icono.ico',  # Icono principal de la app
-            'isalab-icon-large-256-256x256.png',
-            'isalab-icon-xl-512-512x512.png',
-            'isalab-icon-256x256.png',
-            'isalab-icon.png',
-            'isalab-icon.ico',
-            'isalab-icon.svg',
+            'assets/icono.ico',  # Icono principal de la app
+            'assets/isalab-icon-large-256-256x256.png',
+            'assets/isalab-icon-xl-512-512x512.png',
+            'assets/isalab-icon-256x256.png',
+            'assets/isalab-icon.png',
+            'assets/isalab-icon.ico',
+            'assets/isalab-icon.svg',
         ],
         'favicon': [
-            'icono.ico',
-            'isalab-icon-favicon-32-32x32.png',
-            'favicon.png',
-            'isalab-icon.ico',
+            'assets/icono.ico',
+            'assets/isalab-icon-favicon-32-32x32.png',
+            'assets/favicon.png',
+            'assets/isalab-icon.ico',
         ],
         'splash': [
-            'icono.ico',
-            'isalab-icon-xl-512-512x512.png',
-            'isalab-icon-large-256-256x256.png',
-            'isalab-icon.png',
+            'assets/icono.ico',
+            'assets/isalab-icon-xl-512-512x512.png',
+            'assets/isalab-icon-large-256-256x256.png',
+            'assets/isalab-icon.png',
         ]
     }
 
@@ -60,10 +58,10 @@ class IconManager:
         Args:
             carpeta_base: Carpeta base para buscar assets (default: directorio actual)
         """
-        self.carpeta_base = carpeta_base or ASSETS_DIR
+        self.carpeta_base = carpeta_base or Path.cwd()
         self._cache = {}  # Caché de iconos cargados
 
-        logger.debug("IconManager inicializado con base: %s", self.carpeta_base)
+        logger.debug(f"IconManager inicializado con base: {self.carpeta_base}")
 
     def obtener_icono(
             self,
@@ -86,7 +84,7 @@ class IconManager:
         # Verificar caché
         cache_key = f"{tipo}_{tamaño}"
         if cache_key in self._cache:
-            logger.debug("Icono %r obtenido del caché", tipo)
+            logger.debug(f"Icono '{tipo}' obtenido del caché")
             return self._cache[cache_key]
 
         # Obtener rutas de preferencia
@@ -126,22 +124,22 @@ class IconManager:
                     if not icono.isNull():
                         tamaños = icono.availableSizes()
                         logger.info(
-                            "✓ Icono cargado: %s (tamaños: %s)",
-                            ruta_relativa, tamaños,
+                            f"✓ Icono cargado: {ruta_relativa} "
+                            f"(tamaños: {tamaños})"
                         )
                         return icono
                     else:
                         logger.warning(
-                            "⚠️  Archivo de icono válido pero vacío: %s",
-                            ruta_relativa,
+                            f"⚠️  Archivo de icono válido pero vacío: "
+                            f"{ruta_relativa}"
                         )
 
                 except Exception as e:
                     logger.warning(
-                        "⚠️  Error cargando %s: %s", ruta_relativa, e,
+                        f"⚠️  Error cargando {ruta_relativa}: {e}"
                     )
             else:
-                logger.debug("No encontrado: %s", ruta_relativa)
+                logger.debug(f"No encontrado: {ruta_relativa}")
 
         # Fallback: icono vacío (PySide6 mostrará uno por defecto)
         logger.warning(
@@ -166,25 +164,25 @@ class IconManager:
         ruta_path = Path(ruta) if isinstance(ruta, str) else ruta
 
         if not ruta_path.exists():
-            logger.error("Ruta no encontrada: %s", ruta_path)
+            logger.error(f"Ruta no encontrada: {ruta_path}")
             return QIcon()
 
         try:
             icono = QIcon(str(ruta_path))
 
             if icono.isNull():
-                logger.error("Icono inválido: %s", ruta_path)
+                logger.error(f"Icono inválido: {ruta_path}")
                 return QIcon()
 
             if tamaño:
                 pixmap = icono.pixmap(QSize(tamaño, tamaño))
                 return QIcon(pixmap)
 
-            logger.info("✓ Icono personalizado cargado: %s", ruta_path)
+            logger.info(f"✓ Icono personalizado cargado: {ruta_path}")
             return icono
 
         except Exception as e:
-            logger.error("Error cargando icono: %s", e)
+            logger.error(f"Error cargando icono: {e}")
             return QIcon()
 
     def obtener_info(self) -> str:
@@ -242,7 +240,7 @@ def _ejemplo():
     )
 
     # Inicializar
-    manager = IconManager(ASSETS_DIR)
+    manager = IconManager(Path.cwd())
 
     # Ver información
     logging.info(manager.obtener_info())

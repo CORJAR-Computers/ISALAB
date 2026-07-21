@@ -61,9 +61,7 @@ class UsuarioDialog(BaseDialog):
         if not self.usuario:
             self.password = QLineEdit()
             self.password.setEchoMode(QLineEdit.Password)
-            # Fase 5 (H-S2): placeholder consistente con el servicio
-            # ``validar_fortaleza_password`` (8 caracteres mínimo).
-            self.password.setPlaceholderText("Mínimo 8 caracteres, 1 mayúscula, 1 minúscula, 1 número")
+            self.password.setPlaceholderText("Mínimo 6 caracteres")
             style_input(self.password)
             form.addRow("Contraseña *:", self.password)
 
@@ -115,11 +113,6 @@ class UsuarioDialog(BaseDialog):
             else:
                 # Nuevo
                 username = self.username.text().strip()
-                # Fase 5 (H-S2): NO hacer strip sobre la contraseña.
-                # Antes, ``pwd = self.password.text()`` no hacía strip
-                # (correcto), pero el chequeo ``len(pwd) < 6`` era
-                # inconsistente con el servicio (que exige 8). Subimos
-                # el umbral a 8 y dejamos explícito que no se strip.
                 pwd = self.password.text()
                 pwd2 = self.password2.text()
 
@@ -128,11 +121,10 @@ class UsuarioDialog(BaseDialog):
                                  f"{ICONS['warning']} Error",
                                  "El usuario es obligatorio")
                     return
-                # Fase 5 (H-S2): umbral 8 consistente con el servicio.
                 if not pwd or len(pwd) < 8:
                     show_warning(self,
                                  f"{ICONS['warning']} Error",
-                                 "La contraseña debe tener al menos 8 caracteres")
+                                 "La contraseña debe tener al menos 8 caracteres, incluir mayúscula, minúscula y un número")
                     return
                 if pwd != pwd2:
                     show_warning(self,

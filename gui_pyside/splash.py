@@ -12,29 +12,16 @@ class SplashScreen(QSplashScreen):
         self.pix.fill(QColor(QT_STYLES['secondary']))
         super().__init__(self.pix)
 
-        # Fase 6 (G-L3): antes solo ``Qt.FramelessWindowHint``. Si durante
-        # el splash aparecía otra ventana (un QMessageBox de error, una
-        # actualización externa, etc.), el splash quedaba detrás y daba la
-        # impresión de que la app había crasheado.
-        # ``Qt.WindowStaysOnTopHint`` mantiene el splash visible encima de
-        # todo hasta que se cierre explícitamente. El login aparece después
-        # (``splash.finish()`` o ``splash.close()``), no compite.
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        # Quitamos el flag de "siempre encima" para que el login pueda estar
+        # delante
+        self.setWindowFlags(Qt.FramelessWindowHint)
 
         self.progress = 0
         self.message = "Cargando IsaLab..."
         self.logo = None
-        # Fase 6 (G-L4): guard anti-reentrancy para ``setProgress``.
-        # Si ``QApplication.processEvents()`` dispara un evento que a
-        # su vez llama a ``setProgress`` (por ejemplo, un timer que
-        # actualiza el splash), entrábamos en recursión. La flag
-        # cortocircuita la segunda llamada.
-        self._processing = False
 
         # Cargar logo si existe
-        # Fase 4 (C3): el asset real es `Logo_Sidebar.png` (PascalCase).
-        # La referencia lowercase fallaba en Linux/macOS.
-        logo_path = BASE_DIR / "assets" / "Logo_Sidebar.png"
+        logo_path = BASE_DIR / "assets" / "logo_sidebar.png"
         if logo_path.exists():
             self.logo = QPixmap(str(logo_path))
 
@@ -103,30 +90,10 @@ class SplashScreen(QSplashScreen):
         self.setPixmap(self.pix)
 
     def setProgress(self, value, message=""):
-        """Actualiza el progreso y mensaje, y redibuja.
-
-        Fase 6 (G-L4): guard anti-reentrancy. ``QApplication.processEvents()``
-        procesa TODOS los eventos pendientes, incluyendo timers y
-        señales que podrían, a su vez, invocar ``setProgress`` otra
-        vez. Sin la flag, una cascada de updates podía llevar a
-        recursion profunda y stack overflow en arranques lentos
-        (muchos plugins, base de datos remota, etc.).
-
-        Con la flag, la segunda llamada (la reentrante) retorna
-        inmediatamente sin procesar eventos — el ``processEvents``
-        original ya está drenando la cola.
-        """
-        if self._processing:
-            # Reentrante: no redibujamos ni procesamos eventos. El
-            # ``setProgress`` que está en curso se encargará.
-            return
-        self._processing = True
-        try:
-            self.progress = min(100, max(0, value))
-            if message:
-                self.message = message
-            self._draw()
-            self.show()
-            QApplication.processEvents()
-        finally:
-            self._processing = False
+        """Actualiza el progreso y mensaje, y redibuja"""
+        self.progress = min(100, max(0, value))
+        if message:
+            self.message = message
+        self._draw()
+        self.show()
+        QApplication.processEvents()

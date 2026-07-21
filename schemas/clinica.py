@@ -5,15 +5,7 @@ from typing import Optional
 class RecepcionSchema(BaseModel):
     codigo: str = Field(..., min_length=3)
     animal_id: int = Field(..., gt=0, description="ID del paciente válido")
-    # Fase 5 (H-D6): campo ``empresa`` eliminado — era DEAD CODE.
-    # ``RecepcionORM`` no tiene columna ``empresa`` (solo ``MuestraORM``
-    # la tiene, y se usa para distinguir Persona Natural vs entidad
-    # jurídica al generar PDFs de laboratorio). ``RecepcionService``
-    # nunca persistía este campo (ver ``registrar_recepcion`` que
-    # construye ``Recepcion(codigo=..., animal_id=..., ...)`` sin
-    # pasar ``empresa``), y ningún diálogo de recepción lo enviaba en
-    # ``data``. Su mera presencia en el schema confundía a futuros
-    # desarrolladores.
+    empresa: Optional[str] = None
     fecha_hora: str = Field(...)
     motivo: str = Field(..., min_length=1, description="El motivo es obligatorio")
     veterinario: Optional[str] = None

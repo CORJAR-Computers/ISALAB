@@ -1,27 +1,30 @@
-# IsaLab — dependencias de runtime
-# Instalar con:  pip install -r requirements.txt
-#
-# Para desarrollo (linters, type-check, tests, packaging):
-#   pip install -r requirements-dev.txt
-#
-# Nota: Las versiones están pineadas con un rango compatible
-# para evitar breaking changes (ver issue H6 del análisis).
+# IsaLab — dependencias
+# Instalar con: pip install -r requirements.txt
 
-# ── UI / GUI ────────────────────────────────────────────────────────────
-pyside6>=6.6.0          # Framework principal de UI (Qt for Python)
+# ── GUI ──────────────────────────────────────────────────────────────
+pyside6>=6.6.0
 
-# ── Datos / ORM / Migraciones ──────────────────────────────────────────
-sqlalchemy>=2.0.0,<2.1.0       # ORM
-alembic>=1.13.0,<2.0.0         # Migraciones de esquema
-pydantic>=2.5.0,<3.0.0         # Validación de schemas
+# ── Base de datos ────────────────────────────────────────────────────
+sqlalchemy>=2.0.0
 
-# ── Seguridad ──────────────────────────────────────────────────────────
-bcrypt>=4.0.0,<5.0.0           # Hashing de contraseñas
+# ── Validación ───────────────────────────────────────────────────────
+pydantic>=2.5.0
 
-# ── Generación de PDFs ─────────────────────────────────────────────────
-weasyprint>=60.0,<63.0         # Motor PDF (HTML+CSS → PDF)
-jinja2>=3.1.0,<4.0.0           # Templates HTML para reportes
+# ── Seguridad ────────────────────────────────────────────────────────
+bcrypt>=4.1.0
 
-# ── Imágenes y gráficos ────────────────────────────────────────────────
-Pillow>=10.0.0,<12.0.0         # Procesamiento de imágenes (firmas, sellos)
-matplotlib>=3.8.0,<4.0.0       # Gráficos en dashboard y reportes
+# ── Imágenes / gráficos ─────────────────────────────────────────────
+Pillow>=10.0.0
+matplotlib>=3.8.0
+
+# ── Generación de PDFs ──────────────────────────────────────────────
+weasyprint>=61.0
+jinja2>=3.1.0
+reportlab>=4.0.0
+
+# ── Testing ─────────────────────────────────────────────────────────
+pytest>=8.0.0
+pytest-qt>=4.4.0
+python-barcode>=0.15.1
+qrcode[pil]>=7.4
+alembic>=1.13.0

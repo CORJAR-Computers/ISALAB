@@ -7,7 +7,6 @@ from gui_pyside.dialogs.base_dialog import BaseDialog
 from gui_pyside.styles import IsaStyles, style_input, style_button, style_group
 from gui_pyside.components.components import ErrorHandler
 from gui_pyside.utils.messages import show_error, show_warning
-from gui_pyside.utils.services import LazyService
 from services.consulta_service import ConsultaService
 from services.animal_service import AnimalService
 from services.recepcion_service import RecepcionService
@@ -18,15 +17,14 @@ logger = setup_logger()
 
 
 class NuevaConsultaDialog(BaseDialog):
-    service = LazyService(ConsultaService)
-    animal_service = LazyService(AnimalService)
-
     def __init__(self, parent=None, on_save=None):
         width, height = DIALOG_SIZES['large']
         super().__init__(
             parent, f"{
                 ICONS['add']} Nueva Consulta", width, height)
         self.on_save = on_save
+        self.service = ConsultaService()
+        self.animal_service = AnimalService()
         self._build()
 
     def _build(self):
@@ -211,16 +209,15 @@ class EditarConsultaDialog(NuevaConsultaDialog):
 
 
 class DetalleConsultaDialog(BaseDialog):
-    service = LazyService(ConsultaService)
-    animal_service = LazyService(AnimalService)
-    recepcion_service = LazyService(RecepcionService)
-
     def __init__(self, parent=None, consulta_id=None):
         width, height = DIALOG_SIZES['large']
         super().__init__(
             parent, f"{
                 ICONS['view']} Detalle de Consulta", width, height)
         self.consulta_id = consulta_id
+        self.service = ConsultaService()
+        self.animal_service = AnimalService()
+        self.recepcion_service = RecepcionService()
         self.c = None  # Inicializar para evitar errores si falla la BD
         self._build()
 

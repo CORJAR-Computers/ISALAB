@@ -25,39 +25,13 @@ class RecepcionView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Fase 5 (issue HIGH): lazy-init para servicios — no instanciar en
-        # __init__ porque hace imposible swapear el contexto (tests, mock, etc.).
-        self._service = None
-        self._historia_service = None
+        self.service = RecepcionService()
+        self.historia_service = HistoriaService()
         self.current_filtros = {}
         self.setObjectName("recepcionView")
 
         self._build_layout()
         self._cargar_datos()
-
-    @property
-    def service(self):
-        """Lazy-init de RecepcionService."""
-        if self._service is None:
-            self._service = RecepcionService()
-        return self._service
-
-    @service.setter
-    def service(self, value):
-        """Permite inyectar un servicio (para tests/mocking)."""
-        self._service = value
-
-    @property
-    def historia_service(self):
-        """Lazy-init de HistoriaService."""
-        if self._historia_service is None:
-            self._historia_service = HistoriaService()
-        return self._historia_service
-
-    @historia_service.setter
-    def historia_service(self, value):
-        """Permite inyectar un servicio (para tests/mocking)."""
-        self._historia_service = value
 
     def _build_layout(self):
         """Construye el layout de la vista"""
@@ -344,31 +318,9 @@ class RecepcionView(QWidget):
                 f"RecepcionView: {
                     len(recepciones)} registros recibidos")
 
-            # Fase 6 (G-M4): antes, para cada fila de la tabla se llamaba
-            # a ``self._tiene_historia(r.animal_id)`` que ejecutaba una
-            # query separada (``historias_por_paciente(animal_id)``).
-            # Con 50 recepciones en pantalla = 50 queries adicionales
-            # (problema N+1 clásico).
-            #
-            # Ahora pre-cargamos en UNA sola consulta el set de
-            # ``animal_id``s que tienen al menos una historia clínica.
-            # El método ``HistoriaService.historias_por_paciente(aid)``
-            # recibe un único ID, así que para evitar la N+1 usamos el
-            # repositorio subyacente (accesible vía ``self.historia_service.repo``)
-            # y su método ``get_all()`` que retorna todas las historias.
-            #
-            # Como ``HistoriaService`` no expone un método batch
-            # (``tiene_historia_batch`` o ``listar_historias``), y la
-            # capa de servicios es propiedad del batch 9-b, dejamos
-            # constancia en el worklog como item de coordinación. La
-            # solución actual usa ``self.historia_service.repo.get_all()``
-            # (una sola query) y construye un ``set`` de IDs en memoria
-            # — O(1) por fila en el lookup, vs O(N) queries antes.
-            animales_con_historia = self._build_historia_set()
-
             def row_getter(r):
-                # Lookup O(1) en el set pre-cargado.
-                tiene_historia = r.animal_id in animales_con_historia
+                # Verificar si tiene historia clínica
+                tiene_historia = self._tiene_historia(r.animal_id)
 
                 return [
                     str(r.id),
@@ -404,41 +356,8 @@ class RecepcionView(QWidget):
         except Exception as e:
             show_error(self, "No se pudieron cargar los datos.", e)
 
-    def _build_historia_set(self):
-        """Retorna un ``set`` con los ``animal_id`` que tienen historia.
-
-        Fase 6 (G-M4): solución al N+1 de ``_tiene_historia``. Hace
-        UNA sola consulta (``historia_service.repo.get_all()``) y
-        construye un set en memoria. Si la consulta falla (servicio
-        caído, etc.), retorna un set vacío — la UI mostrará "📋"
-        (sin historia) para todas las filas, lo cual es seguro
-        visualmente (el usuario puede hacer click en "📁 Crear
-        Historia" sin problema).
-
-        TODO (coordinación con batch 9-b): reemplazar por
-        ``HistoriaService.tiene_historia_batch(animal_ids)`` cuando
-        exista, para no traer TODAS las historias (solo las de los
-        ``animal_id`` visibles).
-        """
-        try:
-            # ``historia_service.repo`` es un ``HistoriaClinicaRepository``;
-            # su ``get_all()`` retorna lista de ``HistoriaClinica`` con
-            # atributo ``animal_id`` (viene del JOIN en el repo).
-            todas = self.historia_service.repo.get_all()
-            return {h.animal_id for h in todas if h.animal_id is not None}
-        except Exception as e:
-            logger.warning(
-                f"No se pudo pre-cargar set de historias: {e}")
-            return set()
-
     def _tiene_historia(self, animal_id):
-        """Verifica si un animal tiene historia clínica.
-
-        Fase 6 (G-M4): conservado por compatibilidad (algunos callers
-        externos podrían usarlo), pero ya NO se invoca dentro del loop
-        de ``_cargar_datos``. Para casos puntuales (1 sola recepción),
-        el N+1 no es problema.
-        """
+        """Verifica si un animal tiene historia clínica"""
         try:
             historias = self.historia_service.historias_por_paciente(animal_id)
             return len(historias) > 0
@@ -483,13 +402,18 @@ class RecepcionView(QWidget):
                 "Por favor seleccione una recepción")
         return recepcion_id
 
-    # Fase 5 (H-G4): ``_get_selected_animal_id`` eliminado — era dead
-    # code. El cuerpo tenía literalmente ``pass`` seguido de
-    # ``return None``, así que SIEMPRE retornaba None. Nunca fue
-    # invocado desde la vista ni desde ningún diálogo. Su existencia
-    # confundía a futuros desarrolladores que podían creer que había
-    # una forma de obtener el animal_id seleccionado, cuando en
-    # realidad había que pasar por ``obtener_recepcion(rid).animal_id``.
+    def _get_selected_animal_id(self):
+        """Obtiene el ID del animal de la recepción seleccionada"""
+        current_row = self.table.currentRow()
+        if current_row >= 0:
+            # La columna 3 es el código del animal
+            item = self.table.item(current_row, 3)
+            if item and item.text() and item.text() != '—':
+                # El código está en formato "CODIGO", necesitamos obtener el ID
+                # Por ahora retornamos None, pero idealmente deberíamos tener
+                # el ID
+                pass
+        return None
 
     def _nueva_recepcion(self):
         """Abre diálogo para nueva recepción"""
@@ -535,19 +459,13 @@ class RecepcionView(QWidget):
                 'animal_nombre': recepcion.animal_nombre,
                 'animal_codigo': recepcion.animal_codigo,
                 'especie': recepcion.especie,
-                # Fase 6 (G-M9): antes se usaba ``hasattr(recepcion, 'raza')``
-                # y ``hasattr(recepcion, 'telefono')`` como defensivos porque
-                # no estaba claro si el DTO retornado por
-                # ``RecepcionService.obtener_recepcion`` siempre incluía
-                # esos campos. ``hasattr`` es un anti-patrón aquí: si el
-                # servicio NO garantiza el campo, debería ser un bug del
-                # servicio (no de la UI) — y si lo garantiza, ``hasattr``
-                # es ruido. ``getattr(obj, name, default)`` es la forma
-                # idiomática: explícita sobre el default sin ocultar un
-                # posible AttributeError bajo la alfombra.
-                'raza': getattr(recepcion, 'raza', '') or '',
+                'raza': recepcion.raza if hasattr(
+                    recepcion,
+                    'raza') else '',
                 'propietario': recepcion.propietario,
-                'telefono': getattr(recepcion, 'telefono', '') or '',
+                'telefono': recepcion.telefono if hasattr(
+                    recepcion,
+                    'telefono') else '',
                 'veterinario': recepcion.veterinario,
             }
 

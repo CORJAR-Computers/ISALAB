@@ -1,158 +1,14 @@
 # utils/logger.py
-"""Configuración de logging para IsaLab.
-
-Fase 6 (S-M11): PII redaction filter + file perms 0o600.
-
-Antes, el logger escribía a ``logs/isalab.log`` con permisos por defecto
-(``0o644`` en Linux/macOS), lo que permite que cualquier usuario del
-sistema operativo lea el archivo. Los logs pueden contener PII:
-
-- bcrypt hashes (``$2b$12$...``) si un log de autenticación captura el
-  hash del usuario autenticado (e.g. para debug).
-- emails (si se loguean usernames que son emails, o campos ``email``).
-- números de teléfono.
-- contraseñas en claro si un ``logger.debug(f"... {password}")``
-  llega al log por accidente.
-
-Ahora:
-1. Se instala un ``logging.Filter`` (``PIIRedactionFilter``) en el
-   ``RotatingFileHandler`` que reemplaza los patrones comunes con
-   ``[REDACTED]`` ANTES de escribir al archivo.
-2. Tras crear el archivo, se aplica ``os.chmod(path, 0o600)`` para
-   restringir acceso solo al owner.
-"""
+"""Configuración de logging para IsaLab"""
 
 import logging
-import os
-import re
 import sys
 from logging.handlers import RotatingFileHandler
 from config import LOG_PATH
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Fase 6 (S-M11): Patrones de PII a redactar.
-# ─────────────────────────────────────────────────────────────────────────────
-# Cada tupla es ``(patrón_regex, replacement)``. Los patrones se aplican
-# al mensaje formateado ANTES de escribir al archivo.
-
-# Hash bcrypt: ``$2a$``, ``$2b$``, ``$2y$`` seguido de 53 chars del
-# base64 bcrypt. Total 60 chars. Reemplazamos todo por ``[REDACTED_HASH]``.
-_BCRYPT_HASH_RE = re.compile(r'\$2[aby]\$.{56,60}')
-
-# Emails: patrón simple RFC-5322-ish. Suficiente para detectar la mayoría.
-_EMAIL_RE = re.compile(
-    r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
-)
-
-# Teléfonos:_patterns INTENCIONADAMENTE CONSERVADORES. La redacción de
-# teléfonos es difícil porque comparten caracteres (dígitos, ``-``,
-# espacios) con fechas (``2026-01-01 10:00``), IDs, UUIDs, versiones,
-# etc. Para evitar FALSOS POSITIVOS que rompen logs (un log que dice
-# "Recepción 2026-01-01 10:00 no encontrada" se volvería ilegible),
-# solo redactamos:
-#
-#   1. Formato internacional con ``+``: ``+57 300 123 4567``, ``+1-555-123-4567``.
-#   2. 10+ dígitos consecutivos sin separadores: ``3001234567``, ``573001234567``.
-#   3. Formato (XXX) XXX-XXXX o XXX-XXX-XXXX (US/CA): ``(555) 123-4567``.
-#
-# No redactamos formatos locales ambiguos como ``300 1234`` o ``123-4567``
-# porque se confunden con fechas cortas y números de orden.
-_PHONE_INTL_RE = re.compile(
-    r'\+\d{1,3}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4}'
-)
-_PHONE_DIGITS_RE = re.compile(r'\b\d{10,15}\b')
-_PHONE_US_RE = re.compile(
-    r'\(?\d{3}\)?[\s\-]\d{3}[\s\-]\d{4}\b'
-)
-
-# Contraseñas en claro si un log dice ``password=...`` o
-# ``contraseña=...`` o ``pwd:...``. La regex captura el valor y lo
-# reemplaza. ``\S+`` (no-whitespace) cubre la mayoría de formatos.
-_PASSWORD_KV_RE = re.compile(
-    r'(?i)\b(password|passwd|pwd|contrase[ñn]a|secret|token)\s*[:=]\s*\S+'
-)
-
-# Patrones para claves de dict en f-strings tipo ``'password': 'xyz'``
-# (comillas dobles o simples).
-_PASSWORD_DICT_RE = re.compile(
-    r'''(?i)['"](?:password|passwd|pwd|contrase[ñn]a|secret|token)['"]\s*:\s*['"][^'"]*['"]'''
-)
-
-
-class PIIRedactionFilter(logging.Filter):
-    """``logging.Filter`` que redacta PII del mensaje formateado.
-
-    Se instala a nivel de handler (no de logger) para que la redacción
-    aplique solo al archivo (no a la consola — en consola el
-    desarrollador puede querer ver el valor real para debug).
-
-    Implementación: el método ``filter`` recibe el ``LogRecord`` y
-    reescribe ``record.msg`` (y ``record.args`` si los hay) para que el
-    formatter downstream ya vea el mensaje redactado.
-
-    Nota: esto redacta el MENSAJE. Si el ``LogRecord`` fue creado con
-    ``logger.info("user %s logged in", username)`` entonces el
-    username va en ``record.args`` y la redacción debe aplicar al
-    formato resultante. La forma más segura es redactar sobre el
-    mensaje YA FORMATEADO. Para eso usamos ``self.format(record)``
-    indirectamente — pero como ``filter`` corre ANTES del format del
-    handler, hacemos la redacción sobre ``record.getMessage()`` y
-    reescribimos ``record.msg`` con el resultado, dejando ``record.args``
-    vacío. Eso es ligeramente hacky pero funcional: cualquier handler
-    downstream verá el mensaje ya redactado.
-    """
-
-    def __init__(self, name: str = ''):
-        super().__init__(name)
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        try:
-            formatted = record.getMessage()
-        except Exception:
-            # Si el formato falla (e.g. %s mal formado), no rompemos el log.
-            return True
-
-        redacted = self._redact(formatted)
-
-        # Si hubo redacción, sobrescribimos el mensaje y vaciamos args
-        # para que el handler downstream no reintente formatear.
-        if redacted != formatted:
-            record.msg = redacted
-            record.args = None
-        return True
-
-    @staticmethod
-    def _redact(text: str) -> str:
-        """Aplica todos los patrones de redacción al texto."""
-        # Orden importa: contraseñas (que pueden contener emails o
-        # hashes) primero, luego hashes bcrypt, emails, teléfonos.
-        text = _PASSWORD_DICT_RE.sub('[REDACTED]', text)
-        text = _PASSWORD_KV_RE.sub(
-            lambda m: m.group(0).split('=', 1)[0].split(':', 1)[0]
-            + '=[REDACTED]' if '=' in m.group(0) or ':' in m.group(0)
-            else '[REDACTED]',
-            text,
-        )
-        text = _BCRYPT_HASH_RE.sub('[REDACTED_HASH]', text)
-        text = _EMAIL_RE.sub('[REDACTED_EMAIL]', text)
-        # Fase 6 (S-M11): telefonía — aplicar 3 patrones conservadores
-        # en orden: internacional con ``+``, dígitos consecutivos, US.
-        text = _PHONE_INTL_RE.sub('[REDACTED_PHONE]', text)
-        text = _PHONE_DIGITS_RE.sub('[REDACTED_PHONE]', text)
-        text = _PHONE_US_RE.sub('[REDACTED_PHONE]', text)
-        return text
-
-
 def setup_logger(name='isalab'):
-    """Configura logger con rotación de archivos.
-
-    Fase 6 (S-M11):
-        - ``PIIRedactionFilter`` instalado en el ``RotatingFileHandler``
-          para que los logs en archivo no contengan PII.
-        - ``os.chmod(LOG_PATH, 0o600)`` tras la primera escritura para
-          restringir acceso al owner.
-    """
+    """Configura logger con rotación de archivos"""
 
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
@@ -169,10 +25,6 @@ def setup_logger(name='isalab'):
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
-    # Fase 6 (S-M11): redactar PII solo en archivo (la consola se
-    # queda sin filtro para que el desarrollador pueda ver el valor
-    # real durante desarrollo/debug).
-    file_handler.addFilter(PIIRedactionFilter())
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
@@ -180,18 +32,5 @@ def setup_logger(name='isalab'):
 
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-
-    # Fase 6 (S-M11): permisos 0o600 en el archivo de log. ``RotatingFileHandler``
-    # abre el archivo al instanciarse (arriba), así que en este punto el
-    # archivo ya existe en disco. Aplicamos ``chmod`` inmediatamente. Los
-    # rotated backups (``isalab.log.1``, etc.) se crean después con los
-    # permisos por defecto del handler; en una mejora futura se podría
-    # sobrescribir ``RotatingFileHandler.doRollover`` para reaplicar
-    # chmod, pero el archivo activo es el más sensible.
-    try:
-        os.chmod(LOG_PATH, 0o600)
-    except OSError:
-        # Windows o FS sin soporte para chmod — no es fatal.
-        pass
 
     return logger

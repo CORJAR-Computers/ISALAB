@@ -18,7 +18,6 @@ from PySide6.QtGui import QFont
 
 from utils.logger import setup_logger
 from gui_pyside.utils.messages import show_error, show_warning
-from gui_pyside.utils.platform_utils import open_file_externally
 
 logger = setup_logger()
 
@@ -464,13 +463,17 @@ class DialogoGenerarReporte(QDialog):
             show_warning(self, "Sin PDF", "No hay PDF para abrir.")
             return
 
+        import subprocess
+        import sys
+
         try:
-            if not open_file_externally(ruta):
-                show_warning(self, "Aviso",
-                    "No se pudo abrir el PDF. Verifique que tenga "
-                    "una aplicación predeterminada para archivos PDF.")
+            if sys.platform == "win32":
+                os.startfile(ruta)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", ruta])
             else:
-                logger.info(f"PDF abierto: {ruta}")
+                subprocess.Popen(["xdg-open", ruta])
+            logger.info(f"PDF abierto: {ruta}")
         except Exception as e:
             show_error(self, "No se pudo abrir el PDF.", e)
 

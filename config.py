@@ -6,16 +6,6 @@ from pathlib import Path
 
 import sys
 
-# ── Versión de la aplicación (single source of truth) ──────────────────
-# Cualquier referencia a la versión (main.py AppUserModelID, manifiesto
-# Windows, `python main.py --version`, pyproject.toml) debe leerla de aquí
-# o mantenerse consistente con este valor.
-#
-# Nota: ``pyproject.toml`` mantiene su propio ``[project] version`` porque
-# setuptools/PIP lo requieren ahí; al bumpar la versión, actualizar AMBOS
-# sitios (o migrar a dynamic versioning con ``setuptools_scm`` en el futuro).
-__version__ = "1.0.0"
-
 # Modo producción (se puede configurar con variable de entorno ISALAB_PRODUCTION_MODE)
 PRODUCTION_MODE = os.getenv("ISALAB_PRODUCTION_MODE", "1") not in {"0", "false", "False"}
 
@@ -31,17 +21,7 @@ else:
     APP_DIR = Path(__file__).resolve().parent
 
 BASE_DIR = APP_DIR
-
-# Fix Fase 2 (issue M8 complementario): permitir override de DB_PATH
-# mediante variable de entorno ISALAB_DB_PATH. Útil para:
-#   - Tests aislados (cada test con su DB temporal).
-#   - Migraciones Alembic contra una DB específica.
-#   - Despliegues donde la DB vive en otra ruta (ej. /var/lib/isalab/).
-#
-# Antes, DB_PATH estaba hardcoded como APP_DIR / "data" / "isalab.db"
-# y no se podía override sin parchear config.py.
-DB_PATH = Path(os.getenv("ISALAB_DB_PATH", str(APP_DIR / "data" / "isalab.db")))
-
+DB_PATH = APP_DIR / "data" / "isalab.db"
 LOG_PATH = APP_DIR / "logs" / "isalab.log"
 ASSETS_DIR = BUNDLE_DIR / "assets"
 
@@ -50,8 +30,6 @@ DB_PATH.parent.mkdir(exist_ok=True)
 LOG_PATH.parent.mkdir(exist_ok=True)
 ASSETS_DIR.mkdir(exist_ok=True)
 
-# Tipografía Healthcare - Figtree para mejor legibilidad clínica
-FIGTREE_URL = "https://fonts.google.com/share?selection.family=Figtree:wght@300;400;500;600;700"
 FONT_FAMILY = "'Segoe UI', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif"
 
 # Configuración de fuente para PySide6
@@ -65,7 +43,7 @@ FONT_CONFIG = {
         'mono': 11,
     },
     'weights': {
-        'light': 50,
+        'light': 25,
         'normal': 50,
         'bold': 75,
     }
@@ -163,6 +141,7 @@ BRAND_COLORS = {
     'danger':   '#B91C1C',
     'info':     '#0E7490',
 }
+
 
 # Database
 DB_CONFIG = {

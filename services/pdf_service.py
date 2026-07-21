@@ -1,33 +1,20 @@
 # services/pdf_service.py
 """
 Fachada unificada para generación de PDFs — ISALAB.
-
-Fase 3 (issue C1 — RBAC bypass):
-    Toda generación de PDF requiere rol ``asistente`` o superior.
-    Cualquier usuario autenticado puede generar reportes (no se
-    requiere rol clínico), pero se exige autenticación para evitar
-    generación anónima desde procesos externos.
 """
 
 import os
 import json
 from typing import Optional, Dict, List, Any
+from config import PDF_DIR
 
 from utils.logger import setup_logger
-from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class PDFService:
     """Fachada que unifica todos los generadores de reporte."""
-
-    def __init__(self, usuario_actual: Optional[dict] = None):
-        self.authorizer = Authorizer(usuario_actual)
-
-    def _check_perm(self) -> None:
-        """Cualquier usuario autenticado puede generar PDFs (asistente+)."""
-        self.authorizer.require_role('asistente')
 
     # ── Muestra (Compatibilidad con muestra_dialog.py) ──────────────────
 
@@ -37,7 +24,6 @@ class PDFService:
         Detecta automáticamente si es empresa o persona natural.
         Retorna la ruta del archivo generado.
         """
-        self._check_perm()
         from services.report_laboratorio import ReporteLaboratorioService
 
         svc = ReporteLaboratorioService()
@@ -79,7 +65,6 @@ class PDFService:
         es_empresa: bool = False,
         datos_empresa: Optional[Dict[str, str]] = None,
     ) -> bytes:
-        self._check_perm()
         from services.report_laboratorio import ReporteLaboratorioService
         svc = ReporteLaboratorioService()
         return svc.generar_pdf(
@@ -97,7 +82,6 @@ class PDFService:
         es_empresa: bool = False,
         datos_empresa: Optional[Dict[str, str]] = None,
     ) -> str:
-        self._check_perm()
         from services.report_laboratorio import ReporteLaboratorioService
         svc = ReporteLaboratorioService()
         return svc.generar_y_guardar(
@@ -111,13 +95,11 @@ class PDFService:
     # ── Vacunación ───────────────────────────────────────────────────────
 
     def generar_vacunacion(self, vacunacion_id: int) -> bytes:
-        self._check_perm()
         from services.report_vacunacion import ReporteVacunacionService
         svc = ReporteVacunacionService()
         return svc.generar_pdf(vacunacion_id)
 
     def guardar_vacunacion(self, vacunacion_id: int, ruta_salida: str) -> str:
-        self._check_perm()
         from services.report_vacunacion import ReporteVacunacionService
         svc = ReporteVacunacionService()
         return svc.generar_y_guardar(vacunacion_id, ruta_salida)
@@ -130,7 +112,6 @@ class PDFService:
         incluir_consultas: bool = True,
         incluir_vacunas: bool = False,
     ) -> bytes:
-        self._check_perm()
         from services.report_historia_clinica import ReporteHistoriaClinicaService
         svc = ReporteHistoriaClinicaService()
         return svc.generar_pdf(historia_id, incluir_consultas, incluir_vacunas)
@@ -142,7 +123,6 @@ class PDFService:
         incluir_consultas: bool = True,
         incluir_vacunas: bool = False,
     ) -> str:
-        self._check_perm()
         from services.report_historia_clinica import ReporteHistoriaClinicaService
         svc = ReporteHistoriaClinicaService()
         return svc.generar_y_guardar(
@@ -156,7 +136,6 @@ class PDFService:
         cirugia_id: int,
         datos_adicionales: Optional[Dict[str, Any]] = None,
     ) -> bytes:
-        self._check_perm()
         from services.report_cirugia import ReporteCirugiaService
         svc = ReporteCirugiaService()
         return svc.generar_pdf(cirugia_id, datos_adicionales)
@@ -167,7 +146,6 @@ class PDFService:
         ruta_salida: str,
         datos_adicionales: Optional[Dict[str, Any]] = None,
     ) -> str:
-        self._check_perm()
         from services.report_cirugia import ReporteCirugiaService
         svc = ReporteCirugiaService()
         return svc.generar_y_guardar(
@@ -180,7 +158,6 @@ class PDFService:
         consulta_obj,
     ) -> bytes:
         """Genera PDF de una consulta ambulatoria."""
-        self._check_perm()
         from services.report_consulta import ReporteConsultaService
         svc = ReporteConsultaService()
         return svc.generar_pdf(consulta_obj)
@@ -190,7 +167,6 @@ class PDFService:
         consulta_id: int,
         ruta_salida: str,
     ) -> str:
-        self._check_perm()
         from services.report_consulta import ReporteConsultaService
         svc = ReporteConsultaService()
         return svc.generar_y_guardar(consulta_id, ruta_salida)
@@ -202,7 +178,6 @@ class PDFService:
         datos: Dict[str, Any],
     ) -> bytes:
         """Genera PDF de un recibo de pago."""
-        self._check_perm()
         from services.report_recibo import ReporteReciboService
         svc = ReporteReciboService()
         return svc.generar_pdf(datos)
@@ -212,7 +187,6 @@ class PDFService:
         datos: Dict[str, Any],
         ruta_salida: str,
     ) -> str:
-        self._check_perm()
         from services.report_recibo import ReporteReciboService
         svc = ReporteReciboService()
         return svc.generar_y_guardar(datos, ruta_salida)
@@ -221,7 +195,7 @@ class PDFService:
 
     @staticmethod
     def ruta_default(nombre_archivo: str) -> str:
-        carpeta = os.path.join(os.getcwd(), "data", "pdfs")
+        carpeta = str(PDF_DIR)
         os.makedirs(carpeta, exist_ok=True)
         return os.path.join(carpeta, nombre_archivo)
 

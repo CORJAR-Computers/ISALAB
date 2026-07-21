@@ -195,40 +195,11 @@ class HistoriaView(QWidget):
 
     @ErrorHandler.handle_exception
     def _cargar_datos(self):
-        """Carga los datos en la tabla"""
+        """Carga los datos en la tabla usando el repositorio (no SQL raw)."""
         try:
-            # Fase 6 (G-M5): antes este método instanciaba
-            # ``HistoriaClinicaRepository()`` directamente en la vista,
-            # saltándose la capa de servicio. Aunque el repo ya no usa
-            # SQL crudo (Fase 2 C4 lo migró a ``get_all()`` con
-            # SQLAlchemy), la arquitectura exige que las vistas
-            # hablen con ``Service``, no con ``Repository``.
-            #
-            # El servicio ``HistoriaService`` NO expone un método
-            # ``listar_historias(filtros)`` todavía (la única API de
-            # listado es ``historias_por_paciente(animal_id)``, que
-            # requiere un ID específico). Añadir el método faltante es
-            # responsabilidad del batch 9-b (Servicios) — ver worklog.
-            #
-            # Como workaround defensivo, probamos si el servicio ya
-            # tiene ``listar_historias`` (getattr); si lo tiene, lo
-            # usamos. Si no, caemos al repo subyacente expuesto por el
-            # propio servicio (``self.service.repo``) — seguimos
-            # ruteando a través del servicio, sin instanciar el repo
-            # en la vista. Cuando 9-b añada el método, la vista
-            # automáticamente empezará a usarlo.
-            listar = getattr(self.service, 'listar_historias', None)
-            if callable(listar):
-                self._all_data = listar(self.current_filtros)
-            else:
-                # Fallback: usar el repo que el servicio ya tiene
-                # instanciado (mismo objeto, mismo session manager).
-                self._all_data = self.service.repo.get_all(
-                    self.current_filtros)
-
+            self._all_data = self.service.repo.get_all()
             logger.debug(
                 f"HistoriaView: {len(self._all_data)} registros recibidos")
-
             self._render(self._all_data)
 
         except Exception as e:

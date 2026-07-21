@@ -6,62 +6,51 @@ from typing import List, Optional
 
 from database.repositories import HistoriaClinicaRepository, RecepcionRepository
 from database.models import HistoriaClinica
-from pydantic import ValidationError as PydanticValidationError
-from schemas.clinica import HistoriaClinicaSchema
-from utils.exceptions import BusinessLogicError
+from utils.exceptions import ValidationError
 from utils.logger import setup_logger
-from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class HistoriaService:
-    """Servicio de historias clínicas.
-
-    Fase 3 (issue C1 — RBAC bypass):
-        - ``crear_historia`` y ``actualizar_historia`` requieren rol
-          ``veterinario`` o superior (son acciones clínicas).
-        - Lectura solo requiere usuario autenticado.
-    """
-
-    def __init__(self, usuario_actual: Optional[dict] = None):
+    def __init__(self):
         self.repo = HistoriaClinicaRepository()
         self.rec_repo = RecepcionRepository()
-        self.authorizer = Authorizer(usuario_actual)
 
     def crear_historia(self, data: dict) -> HistoriaClinica:
-        # RBAC: requiere rol veterinario o superior
-        self.authorizer.require_role('veterinario')
-
-        # Fase 6 (S-M2): antes ``crear_historia`` llamaba a un método
-        # privado ``_validar`` que replicaba (mal) las reglas del schema.
-        # Ahora validamos vía ``HistoriaClinicaSchema`` de Pydantic,
-        # igual que ``CirugiaService`` y ``ConsultaService``.
-        try:
-            datos_validados = HistoriaClinicaSchema(**data)
-        except PydanticValidationError as e:
-            error_msg = "\n".join(
-                [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
-            logger.error(f"Error Pydantic en historia clínica: {error_msg}")
-            raise BusinessLogicError(
-                f"Datos inválidos en historia clínica:\n{error_msg}")
-
+        self._validar(data)
         historia = HistoriaClinica(
-            recepcion_id=datos_validados.recepcion_id,
-            animal_id=datos_validados.animal_id,
-            fecha=datos_validados.fecha or datetime.now().strftime('%Y-%m-%d'),
-            anamnesis=datos_validados.anamnesis or None,
-            examen_fisico=datos_validados.examen_fisico or None,
+            recepcion_id=int(data['recepcion_id']),
+            animal_id=int(data['animal_id']),
+            fecha=data.get('fecha') or datetime.now().strftime('%Y-%m-%d'),
+            anamnesis=data.get('anamnesis') or None,
+            examen_fisico=data.get('examen_fisico') or None,
             temperatura=_float(data.get('temperatura')),
             frecuencia_cardiaca=_int(data.get('frecuencia_cardiaca')),
             frecuencia_respiratoria=_int(data.get('frecuencia_respiratoria')),
             peso_consulta=_float(data.get('peso_consulta')),
-            diagnostico=datos_validados.diagnostico or None,
-            diagnostico_diferencial=datos_validados.diagnostico_diferencial or None,
-            tratamiento=datos_validados.tratamiento or None,
-            pronostico=datos_validados.pronostico or None,
-            veterinario=(datos_validados.veterinario.strip()
-                         if datos_validados.veterinario else None),
+            dieta=data.get('dieta') or None,
+            enfermedades_previas=data.get('enfermedades_previas') or None,
+            cirugias_previas=data.get('cirugias_previas') or None,
+            esterilizado=data.get('esterilizado') or None,
+            numero_partos=_int(data.get('numero_partos')),
+            esquema_vacunal=data.get('esquema_vacunal') or None,
+            ultima_desparasitacion=data.get('ultima_desparasitacion') or None,
+            tratamientos_recientes=data.get('tratamientos_recientes') or None,
+            viajes_recientes=data.get('viajes_recientes') or None,
+            convive_con_animales=data.get('convive_con_animales') or None,
+            comportamiento=data.get('comportamiento') or None,
+            condicion_corporal=data.get('condicion_corporal') or None,
+            tllc=data.get('tllc') or None,
+            trpc=data.get('trpc') or None,
+            mucosas=data.get('mucosas') or None,
+            pulso=data.get('pulso') or None,
+            deshidratacion=data.get('deshidratacion') or None,
+            diagnostico=data.get('diagnostico') or None,
+            diagnostico_diferencial=data.get('diagnostico_diferencial') or None,
+            tratamiento=data.get('tratamiento') or None,
+            pronostico=data.get('pronostico') or None,
+            veterinario=data.get('veterinario', '').strip() or None,
         )
         historia.id = self.repo.create(historia)
         logger.info(
@@ -71,80 +60,96 @@ class HistoriaService:
         return historia
 
     def obtener_historia(self, hid: int) -> HistoriaClinica:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_by_id(hid)
 
     def historias_por_paciente(self, animal_id: int) -> List[HistoriaClinica]:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_by_animal(animal_id)
 
     def historia_de_recepcion(
             self,
             recepcion_id: int) -> Optional[HistoriaClinica]:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_by_recepcion(recepcion_id)
 
     def actualizar_historia(self, hid: int, data: dict) -> None:
-        # RBAC: requiere rol veterinario o superior
-        self.authorizer.require_role('veterinario')
-
         h = self.repo.get_by_id(hid)
-        # Fase 5 (H-S5): antes, los campos usaban ``data.get('X') or h.X``
-        # lo que significaba que NO se podía limpiar un campo: si el
-        # usuario lo dejaba en blanco (``''``), ``'' or h.X`` evaluaba a
-        # ``h.X`` (el valor previo). Para campos de texto ahora usamos
-        # el patrón ``data.get('X', h.X) or None`` que permite setear a
-        # ``None`` pasando ``''`` explícitamente (lo que es razonable:
-        # un string vacío = sin valor). Para los vitales numéricos
-        # (temperatura, FC, FR, peso) usamos el helper ``_coerce_or_keep``
-        # que distingue "no vino en data" (mantener previo) de "vino
-        # vacío/None" (limpiar a None) de "vino un 0 legítimo" (setear 0).
-        h.anamnesis = data.get('anamnesis', h.anamnesis) or None
-        h.examen_fisico = data.get('examen_fisico', h.examen_fisico) or None
-        # Fase 5 (H-S5): usamos ``data.get('X', _MISSING)`` para distinguir
-        # "key no presente" (mantener valor previo) de "key presente con
-        # valor None o ''" (limpiar a None). Antes se usaba ``or h.X``
-        # que impedía tanto limpiar campos como setear 0 legítimo.
-        h.temperatura = _coerce_or_keep(
-            data.get('temperatura', _MISSING), h.temperatura, _float)
-        h.frecuencia_cardiaca = _coerce_or_keep(
-            data.get('frecuencia_cardiaca', _MISSING),
-            h.frecuencia_cardiaca, _int)
-        h.frecuencia_respiratoria = _coerce_or_keep(
-            data.get('frecuencia_respiratoria', _MISSING),
-            h.frecuencia_respiratoria, _int)
-        h.peso_consulta = _coerce_or_keep(
-            data.get('peso_consulta', _MISSING), h.peso_consulta, _float)
-        h.diagnostico = data.get('diagnostico', h.diagnostico) or None
-        h.diagnostico_diferencial = data.get(
-            'diagnostico_diferencial', h.diagnostico_diferencial) or None
-        h.tratamiento = data.get('tratamiento', h.tratamiento) or None
-        h.pronostico = data.get('pronostico', h.pronostico) or None
-        h.veterinario = data.get('veterinario', h.veterinario) or None
+        # Usamos 'in data' para distinguir "campo no enviado" de "campo vacío intencionalmente".
+        # Esto permite al usuario limpiar campos (enviando cadena vacía) sin perder datos
+        # por el efecto de `or` que trataba '' y 0 como falsy.
+        if 'anamnesis' in data:
+            h.anamnesis = data['anamnesis'] or None
+        if 'examen_fisico' in data:
+            h.examen_fisico = data['examen_fisico'] or None
+        if 'temperatura' in data:
+            h.temperatura = _float(data['temperatura'])
+        if 'frecuencia_cardiaca' in data:
+            h.frecuencia_cardiaca = _int(data['frecuencia_cardiaca'])
+        if 'frecuencia_respiratoria' in data:
+            h.frecuencia_respiratoria = _int(data['frecuencia_respiratoria'])
+        if 'peso_consulta' in data:
+            h.peso_consulta = _float(data['peso_consulta'])
+        if 'dieta' in data:
+            h.dieta = data['dieta'] or None
+        if 'enfermedades_previas' in data:
+            h.enfermedades_previas = data['enfermedades_previas'] or None
+        if 'cirugias_previas' in data:
+            h.cirugias_previas = data['cirugias_previas'] or None
+        if 'esterilizado' in data:
+            h.esterilizado = data['esterilizado'] or None
+        if 'numero_partos' in data:
+            h.numero_partos = _int(data['numero_partos'])
+        if 'esquema_vacunal' in data:
+            h.esquema_vacunal = data['esquema_vacunal'] or None
+        if 'ultima_desparasitacion' in data:
+            h.ultima_desparasitacion = data['ultima_desparasitacion'] or None
+        if 'tratamientos_recientes' in data:
+            h.tratamientos_recientes = data['tratamientos_recientes'] or None
+        if 'viajes_recientes' in data:
+            h.viajes_recientes = data['viajes_recientes'] or None
+        if 'convive_con_animales' in data:
+            h.convive_con_animales = data['convive_con_animales'] or None
+        if 'comportamiento' in data:
+            h.comportamiento = data['comportamiento'] or None
+        if 'condicion_corporal' in data:
+            h.condicion_corporal = data['condicion_corporal'] or None
+        if 'tllc' in data:
+            h.tllc = data['tllc'] or None
+        if 'trpc' in data:
+            h.trpc = data['trpc'] or None
+        if 'mucosas' in data:
+            h.mucosas = data['mucosas'] or None
+        if 'pulso' in data:
+            h.pulso = data['pulso'] or None
+        if 'deshidratacion' in data:
+            h.deshidratacion = data['deshidratacion'] or None
+        if 'diagnostico' in data:
+            h.diagnostico = data['diagnostico'] or None
+        if 'diagnostico_diferencial' in data:
+            h.diagnostico_diferencial = data['diagnostico_diferencial'] or None
+        if 'tratamiento' in data:
+            h.tratamiento = data['tratamiento'] or None
+        if 'pronostico' in data:
+            h.pronostico = data['pronostico'] or None
+        if 'veterinario' in data:
+            h.veterinario = data['veterinario'] or None
         self.repo.update(h)
         logger.info(f"Historia clínica {hid} actualizada")
 
-    # Fase 6 (S-M2): eliminado ``_validar`` muerto. Era invocado por
-    # ``crear_historia`` pero replicaba (mal) las reglas del schema.
-    # Ahora ``crear_historia`` valida vía ``HistoriaClinicaSchema`` de
-    # Pydantic (igual que los demás servicios clínicos).
+    def _validar(self, data: dict) -> None:
+        errores = []
+        if not data.get('recepcion_id'):
+            errores.append("La recepción es obligatoria")
+        if not data.get('animal_id'):
+            errores.append("El paciente es obligatorio")
+        if errores:
+            raise ValidationError(
+                "Datos de historia clínica inválidos", {
+                    'errores': errores})
 
 
 # ── helpers de conversión segura ──────────────────────────────────────────
-# Fase 5 (H-S5): antes, ``_float`` y ``_int`` trataban ``'0'`` y ``0``
-# como ``None`` (``val not in (None, '', '0', 0)``), lo que impedía
-# registrar una temperatura de 0°C (inusual pero posible en crioterapia)
-# o una frecuencia cardiaca de 0 (paro cardíaco — un caso clínico
-# perfectamente válido para documentar). Ahora solo tratan como
-# ``None`` los valores *ausentes* (``None`` y ``''``); cualquier otro
-# string/numérico se intenta convertir.
-
-
 def _float(val) -> Optional[float]:
-    """Convierte ``val`` a ``float``, o ``None`` si está ausente."""
+    """Convierte a float. Solo None y '' se consideran 'sin valor'.
+    Un valor de 0.0 es válido (ej. temperatura en Celsius)."""
     if val is None or val == '':
         return None
     try:
@@ -154,43 +159,11 @@ def _float(val) -> Optional[float]:
 
 
 def _int(val) -> Optional[int]:
-    """Convierte ``val`` a ``int``, o ``None`` si está ausente."""
+    """Convierte a int. Solo None y '' se consideran 'sin valor'.
+    Un valor de 0 es válido."""
     if val is None or val == '':
         return None
     try:
-        return int(float(val))  # acepta "0.0" → 0
+        return int(val)
     except (ValueError, TypeError):
         return None
-
-
-def _coerce_or_keep(new_val, current_val, converter) -> Optional[float]:
-    """Decide el valor final de un campo numérico al actualizar.
-
-    - Si ``new_val`` es ``None`` y NO estaba en ``data`` (es decir, el
-      caller NO pasó la key), mantiene ``current_val``.
-    - Si ``new_val`` es ``''`` o explícitamente pasado como ``None``,
-      limpia a ``None`` (el usuario borró el campo).
-    - Si ``new_val`` es un valor numérico (incluyendo ``0`` o ``'0'``),
-      lo convierte y lo setea.
-
-    Como no podemos distinguir "key no presente" de "key presente con
-    valor None" usando ``dict.get`` (ambos retornan None), el caller
-    debe pasar ``data.get('X', _MISSING)`` o usar ``'X' in data`` para
-    distinguir. Esta función acepta el valor retornado por
-    ``data.get('X', _MISSING)`` para mantener el comportamiento.
-    """
-    if new_val is _MISSING:
-        # No vino en data → mantener el valor actual.
-        return current_val
-    # Vino en data (incluso si es None o '').
-    return converter(new_val)
-
-
-class _MissingSentinel:
-    """Sentinel para distinguir "key ausente" de "key presente con None"."""
-
-    def __repr__(self):
-        return "<MISSING>"
-
-
-_MISSING = _MissingSentinel()

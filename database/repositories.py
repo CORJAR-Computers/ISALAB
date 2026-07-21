@@ -112,25 +112,13 @@ class AnimalRepository(BaseRepository):
             return [Animal.from_row(dict(r)) for r in rows]
 
     def update(self, animal: Animal) -> None:
-        # Fix Fase 2 (issue HIGH): antes este update solo persistía 13 de los
-        # 25 campos editables de Animal. Los 12 campos perdidos eran:
-        #   codigo, senas_particulares, microchip, unidad_edad,
-        #   fecha_nacimiento, propietario_tipo_doc, propietario_documento,
-        #   propietario_direccion, propietario_oficio
-        # (los 4 de propietario eran los más críticos: se perdían al editar).
         with self.get_session() as session:
             session.query(AnimalORM).filter(AnimalORM.id == animal.id).update({
-                "codigo": animal.codigo,
-                "nombre": animal.nombre,
-                "especie": animal.especie,
-                "raza": animal.raza,
-                "sexo": animal.sexo,
-                "color": animal.color,
-                "tipo_pelo": animal.tipo_pelo,
+                "nombre": animal.nombre, "especie": animal.especie, "raza": animal.raza,
+                "sexo": animal.sexo, "color": animal.color, "tipo_pelo": animal.tipo_pelo,
                 "senas_particulares": animal.senas_particulares,
                 "microchip": animal.microchip,
-                "edad": animal.edad,
-                "unidad_edad": animal.unidad_edad,
+                "edad": animal.edad, "unidad_edad": animal.unidad_edad,
                 "fecha_nacimiento": animal.fecha_nacimiento,
                 "peso": animal.peso,
                 "propietario": animal.propietario,
@@ -138,10 +126,8 @@ class AnimalRepository(BaseRepository):
                 "propietario_documento": animal.propietario_documento,
                 "propietario_direccion": animal.propietario_direccion,
                 "propietario_oficio": animal.propietario_oficio,
-                "telefono": animal.telefono,
-                "email": animal.email,
-                "estado": animal.estado,
-                "observaciones": animal.observaciones,
+                "telefono": animal.telefono, "email": animal.email,
+                "estado": animal.estado, "observaciones": animal.observaciones
             })
 
     def update_estado(self, animal_id: int, estado: str) -> None:
@@ -175,11 +161,7 @@ class MovimientoRepository(BaseRepository):
         with self.get_session() as session:
             q = sa.text("SELECT * FROM movimientos WHERE animal_id = :id ORDER BY fecha_hora DESC")
             rows = session.execute(q, {"id": animal_id}).mappings().all()
-            # Fase 6 (DB-M5): usamos ``Movimiento.from_row`` para acceso
-            # uniforme con el resto de modelos. Antes hacía
-            # ``Movimiento(**dict(row))`` que rompía si la query traía
-            # columnas extra (joins futuros) — ``from_row`` filtra.
-            return [Movimiento.from_row(r) for r in rows]
+            return [Movimiento(**dict(row)) for row in rows]
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -193,6 +175,7 @@ class MuestraRepository(BaseRepository):
                 codigo=m.codigo, animal_id=m.animal_id, empresa=m.empresa,
                 tipo_muestra=m.tipo_muestra, tipo_analisis=m.tipo_analisis,
                 fecha_recoleccion=m.fecha_recoleccion, fecha_entrega=m.fecha_entrega,
+                resultado=m.resultado, valor_referencia=m.valor_referencia,
                 observaciones=m.observaciones, tecnico=m.tecnico,
                 veterinario_ref=m.veterinario_ref, urgente=m.urgente, estado=m.estado
             )
@@ -298,21 +281,9 @@ class RecepcionRepository(BaseRepository):
                 if filtros.get('busqueda'):
                     query += " AND (r.codigo LIKE :b OR a.nombre LIKE :b OR a.codigo LIKE :b)"
                     params['b'] = f"%{filtros['busqueda']}%"
-                # Fase 6 (S-M6): soporte de filtrado por rango de
-                # ``fecha_hora``. ``fecha_desde`` inclusivo, ``fecha_hasta``
-                # exclusivo (patrón ``[desde, hasta)``) — esto permite
-                # consultar "todas las recepciones de hoy" sin caer en
-                # trampas de borde de timezone o comparaciones de strings.
-                # ``r.fecha_hora`` puede ser NULL si el INSERT falló a
-                # mitad de camino; los operadores ``>=`` / ``<`` sobre
-                # NULL devuelven NULL (que SQLite excluye del WHERE), así
-                # que no se necesita un COALESCE adicional.
-                if filtros.get('fecha_desde'):
-                    query += " AND r.fecha_hora >= :fdesde"
-                    params['fdesde'] = filtros['fecha_desde']
-                if filtros.get('fecha_hasta'):
-                    query += " AND r.fecha_hora < :fhasta"
-                    params['fhasta'] = filtros['fecha_hasta']
+            if filtros.get('fecha_hoy'):
+                    query += " AND date(r.fecha_hora) = :hoy"
+                    params['hoy'] = filtros['fecha_hoy']
             query += " ORDER BY r.fecha_hora DESC"
             rows = session.execute(sa.text(query), params).mappings().all()
             return [Recepcion.from_row(dict(r)) for r in rows]
@@ -378,36 +349,6 @@ class HistoriaClinicaRepository(BaseRepository):
                 ORDER BY h.fecha DESC
                 ''')
             rows = session.execute(q, {"id": animal_id}).mappings().all()
-            return [HistoriaClinica.from_row(dict(r)) for r in rows]
-
-    def get_all(self, filtros: Optional[Dict] = None) -> List[HistoriaClinica]:
-        """
-        Lista todas las historias clínicas con joins de animal y recepción.
-
-        Fix Fase 2 (issue C4): este método faltaba en el repositorio, lo que
-        forzaba a ``gui_pyside/views/historia.py`` a saltarse la capa de
-        repositorio y ejecutar SQL crudo vía ``repo.db.fetch_all(...)``,
-        reintroduciendo el anti-patrón dual-access (sqlite3 + SQLAlchemy).
-        """
-        with self.get_session() as session:
-            query = '''
-                SELECT h.*, a.nombre as animal_nombre, a.codigo as animal_codigo,
-                       a.especie, r.codigo as recepcion_codigo
-                FROM historias_clinicas h
-                LEFT JOIN animales a ON h.animal_id = a.id
-                LEFT JOIN recepciones r ON h.recepcion_id = r.id
-                WHERE 1 = 1
-                '''
-            params: Dict = {}
-            if filtros:
-                if filtros.get('animal_id'):
-                    query += " AND h.animal_id = :aid"
-                    params['aid'] = filtros['animal_id']
-                if filtros.get('busqueda'):
-                    query += " AND (a.nombre LIKE :b OR a.codigo LIKE :b OR r.codigo LIKE :b)"
-                    params['b'] = f"%{filtros['busqueda']}%"
-            query += " ORDER BY h.fecha DESC"
-            rows = session.execute(sa.text(query), params).mappings().all()
             return [HistoriaClinica.from_row(dict(r)) for r in rows]
 
     def get_by_recepcion(self, recepcion_id: int):

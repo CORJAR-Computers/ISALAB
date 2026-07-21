@@ -1,27 +1,11 @@
 # main.py
 import sys
-
-# ── Fast-path: flag --version / -V ────────────────────────────────────
-# Se ejecuta ANTES de importar PySide6 (que cuesta ~0.5s en cargarse) para
-# que `python main.py --version` sea instantáneo y usable en scripts de CI
-# / empaquetado sin penalización. Sale sin inicializar Qt, DB ni splash.
-if any(arg in {'--version', '-V'} for arg in sys.argv[1:]):
-    # Import tardío: config.py no depende de Qt.
-    from config import __version__
-    print(f"IsaLab {__version__}")
-    sys.exit(0)
-
 from pathlib import Path
 import traceback
 import threading
 from PySide6.QtWidgets import QApplication, QMessageBox, QDialog
 from PySide6.QtCore import QTimer, Signal, QObject
 from PySide6.QtGui import QIcon
-
-# Versión de la aplicación — single source of truth: ``config.__version__``.
-# Se importa aquí (no en el fast-path) para que el AppUserModelID de Windows
-# la use al fijar la identidad del proceso.
-from config import __version__
 
 # ── Icono en barra de tareas de Windows ──────────────────────────────
 # DEBE ejecutarse ANTES de crear QApplication para que Windows
@@ -30,26 +14,16 @@ if sys.platform == 'win32':
     import ctypes
     # Establece un AppUserModelID único para esta aplicación.
     # Sin esto, Windows la agrupa bajo el icono de python.exe.
-    # El número de versión va al final para que builds con versiones
-    # distintas se vean como entradas separadas en la barra de tareas.
-    _app_user_model_id = f"IsaLab.CentroDiagnosticoVeterinario.{__version__}"
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-        _app_user_model_id
+        u'IsaLab.CentroDiagnosticoVeterinario.1.0'
     )
 
-from config import (
-    WINDOW_CONFIG,
-    GLOBAL_STYLESHEET,
-    PRODUCTION_MODE,
-    ASSETS_DIR,
-    BUNDLE_DIR,
-)
+from config import WINDOW_CONFIG, GLOBAL_STYLESHEET, PRODUCTION_MODE, ASSETS_DIR
 from gui_pyside.splash import SplashScreen
 from gui_pyside.dialogs.login_dialog import LoginDialog
 from gui_pyside.dialogs.instalador_dialog import InstaladorDialog
 from gui_pyside.app import LabVetApp
 from utils.logger import setup_logger
-from utils.security import set_current_user, clear_current_user
 from database.connection import DatabaseManager
 from gui_pyside.utils.messages import install_messagebox_style_filter
 
@@ -205,18 +179,6 @@ def iniciar_sesion(splash, icono_app):
             return
 
         usuario = getattr(login_dialog, 'usuario', {})
-
-        # Fase 3 (issue C1 — RBAC bypass): registrar el usuario autenticado
-        # en el contexto thread-local para que todos los servicios lo
-        # picken automáticamente vía ``Authorizer()``. Antes, el Authorizer
-        # solo se cableaba en ``UsuarioService``; el resto de servicios
-        # operaban sin usuario y el RBAC estaba efectivamente burlado.
-        set_current_user(usuario)
-        logger.info(
-            f"Usuario autenticado registrado en contexto thread-local: "
-            f"{usuario.get('username', '?')} (rol: {usuario.get('rol', '?')})"
-        )
-
         window = LabVetApp(usuario=usuario)
 
         # Aplicar icono a ventana principal Y a la aplicación
@@ -253,12 +215,8 @@ def main():
         )
         sys.exit(1)
 
-    # 1. Inicializamos el gestor de iconos.
-    # Usar ASSETS_DIR (no Path.cwd() ni BUNDLE_DIR) para que funcione
-    # en modo congelado (.exe): el CWD del usuario puede no ser el
-    # directorio del bundle. ASSETS_DIR ya apunta a BUNDLE_DIR/assets.
-    # Ver issue H9 del análisis.
-    inicializar_manager(ASSETS_DIR)
+    # 1. Inicializamos el gestor de iconos
+    inicializar_manager(Path.cwd())
 
     # Cargar icono directamente desde archivo .ico para Windows
     ico_path = ASSETS_DIR / "icono.ico"

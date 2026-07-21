@@ -39,8 +39,6 @@ identifier.sqlite
 data/*.db
 data/*.sqlite
 data/*.sqlite3
-data/imagenes/           # firmas/sellos generados por el usuario
-data/lab_config.json     # configuración generada en runtime
 
 # ── Logs y Documentos Generados ──
 logs/
@@ -52,16 +50,11 @@ data/pdfs/
 # ── Variables de Entorno y Secretos ──
 .env
 .env.*
-!.env.example
 *.env
 *.pem
 *.key
 secrets.json
 config_local.py
-
-# ── Lockfile (se genera con pip-compile, NO se commitea) ──
-# (descomentar si prefieres no versionar el lock)
-#requirements.lock
 
 # ── Configuración de IDEs y Editores ──
 .idea/
@@ -100,28 +93,3 @@ Desktop.ini
 ._*
 .Spotlight-V100
 .Trashes
-
-# ── Duplicados de assets en la raíz del proyecto ──
-# PyInstaller a veces los vuelca en CWD; nunca deben commitearse
-/icono.ico
-/icono.png
-
-# ── Scripts one-shot de mantenimiento ──
-# Ya cumplieron su propósito (fix de flake8 F541, formato Jinja, etc.).
-# Si se necesitan scripts de mantenimiento nuevos, colocarlos en scripts/.
-/fix_*.py
-
-# ── Cobertura de tests ──
-.coverage
-coverage.xml
-htmlcov/
-.pytest_cache/
-.hypothesis/
-
-# ── Mypy cache ──
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# ── Ruff cache ──
-.ruff_cache/

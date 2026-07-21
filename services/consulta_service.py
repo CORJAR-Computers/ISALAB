@@ -1,47 +1,30 @@
 # services/consulta_service.py
 """Lógica de negocio — Consultas ambulatorias (CONS-XXXX)"""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from database.repositories import ConsultaRepository
 from database.connection import DatabaseManager
 from database.models import Consulta
-from pydantic import ValidationError as PydanticValidationError
+from pydantic import ValidationError
 
 from schemas.clinica import ConsultaSchema
 from utils.exceptions import BusinessLogicError
 from utils.logger import setup_logger
-from utils.security import Authorizer
 
 logger = setup_logger()
 
 
 class ConsultaService:
-    """Servicio de consultas ambulatorias.
-
-    Fase 3 (issue C1 — RBAC bypass):
-        - ``registrar_consulta`` y ``actualizar_consulta`` requieren
-          rol ``veterinario`` o superior (son acciones clínicas).
-        - Lectura (``obtener_consulta``, ``listar_consultas``,
-          ``consultas_por_paciente``, ``generar_codigo``) solo requiere
-          usuario autenticado.
-    """
-
-    def __init__(self, usuario_actual: Optional[dict] = None):
+    def __init__(self):
         self.repo = ConsultaRepository()
         self.db_manager = DatabaseManager()
-        self.authorizer = Authorizer(usuario_actual)
 
     def generar_codigo(self) -> str:
         """Genera código correlativo de manera atómica."""
-        # RBAC: cualquier usuario autenticado puede generar (consumir)
-        self.authorizer.require_authenticated()
         return self.db_manager.generar_codigo('CONS')
 
     def registrar_consulta(self, data: Dict[str, Any]) -> Consulta:
-        # RBAC: requiere rol veterinario o superior
-        self.authorizer.require_role('veterinario')
-
         try:
             # Generar código automáticamente si no se proporciona
             if not data.get('codigo'):
@@ -67,7 +50,7 @@ class ConsultaService:
             logger.info(f"Consulta registrada: {consulta.codigo}")
             return consulta
 
-        except PydanticValidationError as e:
+        except ValidationError as e:
             error_msg = "\n".join(
                 [f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
             logger.error(f"Error Pydantic en consulta: {error_msg}")
@@ -78,37 +61,43 @@ class ConsultaService:
             raise
 
     def obtener_consulta(self, cid: int) -> Consulta:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_by_id(cid)
 
     def listar_consultas(self, filtros: dict = None) -> List[Consulta]:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_all(filtros)
 
     def consultas_por_paciente(self, animal_id: int) -> List[Consulta]:
-        # RBAC: cualquier usuario autenticado
-        self.authorizer.require_authenticated()
         return self.repo.get_by_animal(animal_id)
 
     def actualizar_consulta(self, cid: int, data: dict) -> None:
-        # RBAC: requiere rol veterinario o superior
-        self.authorizer.require_role('veterinario')
         c = self.repo.get_by_id(cid)
-        c.motivo = data.get('motivo', c.motivo)
-        c.evolucion = data.get('evolucion', c.evolucion)
-        c.examen_fisico = data.get('examen_fisico', c.examen_fisico)
-        c.tratamiento = data.get('tratamiento', c.tratamiento)
-        c.medicamentos = data.get('medicamentos', c.medicamentos)
-        c.proxima_consulta = data.get('proxima_consulta', c.proxima_consulta)
-        c.veterinario = data.get('veterinario', c.veterinario)
-        c.observaciones = data.get('observaciones', c.observaciones)
+        # Usamos 'in data' para distinguir "campo no enviado" de "campo vacío intencionalmente"
+        if 'motivo' in data:
+            c.motivo = data['motivo']
+        if 'evolucion' in data:
+            c.evolucion = data['evolucion'] or None
+        if 'examen_fisico' in data:
+            c.examen_fisico = data['examen_fisico'] or None
+        if 'tratamiento' in data:
+            c.tratamiento = data['tratamiento'] or None
+        if 'medicamentos' in data:
+            c.medicamentos = data['medicamentos'] or None
+        if 'proxima_consulta' in data:
+            c.proxima_consulta = data['proxima_consulta']
+        if 'veterinario' in data:
+            c.veterinario = data['veterinario'] or None
+        if 'observaciones' in data:
+            c.observaciones = data['observaciones'] or None
         self.repo.update(c)
         logger.info(f"Consulta {cid} actualizada")
 
-    # Fase 6 (S-M2): eliminado ``_validar`` muerto. Era dead code —
-    # ningún caller lo invocaba (``registrar_consulta`` valida vía
-    # ``ConsultaSchema`` de Pydantic). Replicaba reglas ya expresadas
-    # en ``schemas/clinica.py::ConsultaSchema`` (animal_id > 0,
-    # motivo min_length=1).
+    def _validar(self, data: dict) -> None:
+        errores = []
+        if not data.get('animal_id'):
+            errores.append("Debe seleccionar un paciente")
+        if not data.get('motivo', '').strip():
+            errores.append("El motivo de consulta es obligatorio")
+        if errores:
+            raise ValidationError(
+                "Datos de consulta inválidos", {
+                    'errores': errores})

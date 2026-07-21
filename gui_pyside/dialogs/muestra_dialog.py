@@ -23,117 +23,24 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QApplication,
     QAbstractItemView)
-from PySide6.QtCore import Qt, QDate, QThread, Signal, QObject, QEvent
+from PySide6.QtCore import Qt, QDate, QThread, Signal
 import os
 import json
 
 from gui_pyside.dialogs.base_dialog import BaseDialog
 from gui_pyside.dialogs.animal_dialog import NuevoAnimalDialog
 from gui_pyside.components.components import ErrorHandler
-from gui_pyside.components.forms import LoadingOverlay
 from gui_pyside.utils.messages import show_error, show_warning
-from gui_pyside.utils.services import LazyService
 from utils.logger import setup_logger
 
 logger = setup_logger()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Fase 5 (H-G7): Event filter para "pegado mágico" en tabla de resultados.
-# ─────────────────────────────────────────────────────────────────────────────
-# Antes, ``ResultadoMuestraDialog`` monkey-patcheaba
-# ``self.tabla_resultados.keyPressEvent = self._pegar_magico_en_tabla`` para
-# interceptar Ctrl+V y pegar filas parseadas desde el portapapeles. Eso
-# rompía encapsulación y era frágil. Este event filter hace lo mismo
-# pero por el mecanismo oficial de Qt (``installEventFilter``), sin
-# tocar la clase original de ``QTableWidget``.
-
-
-class _PegadoMagicoFilter(QObject):
-    """Intercepta ``Ctrl+V`` sobre una ``QTableWidget`` y delega al handler.
-
-    El ``handler`` es un callable ``(event) -> bool`` que recibe el
-    ``QEvent`` original (cast a ``QKeyEvent`` por el caller). Si retorna
-    ``True``, el evento se considera manejado y NO se propaga al widget;
-    si retorna ``False``, el evento sigue su curso normal (comportamiento
-    por defecto de ``QTableWidget``).
-    """
-
-    def __init__(self, target_table, handler):
-        super().__init__(target_table)  # parent = target → se limpia solo
-        self._handler = handler
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress:
-            if event.key() == Qt.Key_V and (
-                    event.modifiers() & Qt.KeyboardModifier.ControlModifier):
-                # Delegar al handler del diálogo. Si consume el evento
-                # (retorna True o None), marcamos como manejado.
-                result = self._handler(event)
-                if result is not False:
-                    return True
-        # Propagar al widget original.
-        return super().eventFilter(obj, event)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Fase 5 (H-G8): PDFProWorker hoisted de método anidado → clase de módulo.
-# ─────────────────────────────────────────────────────────────────────────────
-# Antes, ``PDFProWorker`` se definía DENTRO de ``_imprimir_pdf`` como
-# clase anidada, lo que significa que Python RE-CREABA la clase en cada
-# click del botón "Imprimir Resultados Pro" (definición nueva, dirs
-# nuevos en ``sys.modules``, etc.). Peor aún, el ``QThread`` arrancado
-# no tenía ``finished`` conectado ni ``deleteLater()``, así que cada
-# click acumulaba un QThread zombie hasta que el GC de Python lo
-# recolectara (eventualmente, si es que lo hacía — Qt mantiene refs
-# internas que pueden impedirlo).
-#
-# Ahora ``PDFProWorker`` es una clase de módulo (se define una sola vez
-# al importar) y el diálogo conecta su señal ``finished`` a
-# ``deleteLater()`` para que Qt limpie el QThread al terminar.
-
-
-class PDFProWorker(QThread):
-    """Worker thread para generar PDF de resultados de laboratorio.
-
-    Emite ``terminado(bytes)`` con el contenido del PDF al terminar
-    exitosamente, o ``error(str)`` con el mensaje de error si falla.
-    La señal ``finished`` (de ``QThread``) se conecta externamente a
-    ``deleteLater()`` para limpiar el thread.
-    """
-
-    terminado = Signal(bytes)
-    error = Signal(str)
-
-    def __init__(self, muestra_id, es_empresa, datos_empresa, parent=None):
-        super().__init__(parent)
-        self.muestra_id = muestra_id
-        self.es_empresa = es_empresa
-        self.datos_empresa = datos_empresa
-
-    def run(self):
-        try:
-            # Import diferido para evitar import circular en tests sin
-            # WeasyPrint instalado.
-            from services.report_laboratorio import ReporteLaboratorioService
-            svc = ReporteLaboratorioService()
-            pdf_bytes = svc.generar_pdf(
-                self.muestra_id,
-                es_empresa=self.es_empresa,
-                datos_empresa=self.datos_empresa
-            )
-            self.terminado.emit(pdf_bytes)
-        except Exception as e:
-            logger.error(f"PDFProWorker falló: {e}", exc_info=True)
-            self.error.emit(str(e))
-
-
 class PacienteSelector(QWidget):
-    animal_service = LazyService(AnimalService)
-
     def __init__(self, parent=None, on_nuevo_callback=None):
         super().__init__(parent)
         self.on_nuevo_callback = on_nuevo_callback
+        self.animal_service = AnimalService()
         self._setup_ui()
         self._cargar_animales()
 
@@ -196,11 +103,10 @@ class PacienteSelector(QWidget):
 
 
 class NuevaMuestraDialog(BaseDialog):
-    service = LazyService(MuestraService)
-
     def __init__(self, parent=None, on_save=None):
         super().__init__(parent, "🧪 Nueva Muestra de Laboratorio", 900, 520)
         self.on_save = on_save
+        self.service = MuestraService()
         self._build()
 
     def _build(self):
@@ -208,34 +114,7 @@ class NuevaMuestraDialog(BaseDialog):
         main_layout.setSpacing(24)
         self.content_layout.addLayout(main_layout)
 
-        # Fase 6 (G-L7): antes se llamaba a ``self.service.generar_codigo()``
-        # aquí, en ``_build()``, ANTES de que el usuario llenara nada.
-        # Eso consumía un código LAB-XXXX del contador atómico en CADA
-        # apertura del diálogo, incluso si el usuario cancelaba. Con
-        # tiempo, la tabla de muestras quedaba con huecos enormes en la
-        # secuencia (LAB-0001, LAB-0007, LAB-0015, ...) porque los
-        # códigos cancelados no se podían reciclar.
-        #
-        # Ahora mostramos un placeholder "LAB-????" y solo consumimos
-        # un código real al guardar. Si el servicio tiene
-        # ``preview_siguiente_codigo`` (API planeada por el batch 9-b),
-        # lo usamos para mostrar el código siguiente sin consumirlo.
-        # Mientras 9-b no lo añada, el placeholder es la mejor opción.
-        #
-        # Defensive: si ``preview_siguiente_codigo`` existe pero falla
-        # (ej: requiere usuario autenticado y el diálogo no lo pasa
-        # aún), caemos al placeholder en lugar de propagar la
-        # excepción. Mejor mostrar "LAB-????" que crashear al abrir
-        # el diálogo.
-        self.codigo_generado = "LAB-????"
-        preview_fn = getattr(self.service, 'preview_siguiente_codigo', None)
-        if callable(preview_fn):
-            try:
-                self.codigo_generado = preview_fn()
-            except Exception as e:
-                logger.warning(
-                    f"preview_siguiente_codigo falló, usando "
-                    f"placeholder 'LAB-????': {e}")
+        self.codigo_generado = self.service.generar_codigo()
 
         left_card = QGroupBox("⚙️ Configuración del Análisis")
         style_group(left_card, IsaStyles.PRIMARY)
@@ -258,17 +137,7 @@ class NuevaMuestraDialog(BaseDialog):
 
         btn_refresh = QPushButton("🔄")
         btn_refresh.setFixedSize(32, 32)
-        # Fase 6 (G-L7): el botón "🔄" antes llamaba a ``generar_codigo()``
-        # que CONSUME el código. Si el servicio aún no tiene
-        # ``preview_siguiente_codigo``, deshabilitamos el botón refresh
-        # (no tiene sentido refrescar un placeholder). Cuando 9-b
-        # añada el método preview, el botón se re-habilita solo.
-        btn_refresh.setToolTip("Previsualizar siguiente código")
-        if not callable(preview_fn):
-            btn_refresh.setEnabled(False)
-            btn_refresh.setToolTip(
-                "Previsualización no disponible aún — el código se "
-                "generará al guardar.")
+        btn_refresh.setToolTip("Generar nuevo código")
         btn_refresh.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
@@ -276,10 +145,6 @@ class NuevaMuestraDialog(BaseDialog):
                 border-radius: 4px;
             }}
             QPushButton:hover {{
-                background-color: {IsaStyles.LIGHT_BG};
-            }}
-            QPushButton:disabled {{
-                color: {IsaStyles.GRAY};
                 background-color: {IsaStyles.LIGHT_BG};
             }}
         """)
@@ -412,18 +277,7 @@ class NuevaMuestraDialog(BaseDialog):
         self.set_save_callback(self._guardar)
 
     def _regenerar_codigo(self):
-        # Fase 6 (G-L7): si el servicio tiene ``preview_siguiente_codigo``,
-        # lo usamos (NO consume el contador). Si no lo tiene, este botón
-        # está deshabilitado en ``_build`` y nunca debería llamarse —
-        # pero por defensividad, si llega aquí, no hacemos nada.
-        preview_fn = getattr(self.service, 'preview_siguiente_codigo', None)
-        if not callable(preview_fn):
-            return
-        try:
-            self.codigo_generado = preview_fn()
-        except Exception as e:
-            logger.warning(f"preview_siguiente_codigo falló: {e}")
-            return
+        self.codigo_generado = self.service.generar_codigo()
         self.lbl_codigo.setText(
             f"<b style='font-size:18px; color:{IsaStyles.PRIMARY};'>{self.codigo_generado}</b>")
 
@@ -500,24 +354,6 @@ class NuevaMuestraDialog(BaseDialog):
 
         animal_id = self.selector_paciente.current_data()
 
-        # Fase 6 (G-L7): aquí sí consumimos un código real del contador
-        # atómico. Si el usuario llegó hasta este punto, es porque
-        # validó el form y decidió guardar — consumir el código es
-        # legítimo. Antes se consumía en ``_build`` (al abrir el
-        # diálogo), gastando códigos en aperturas canceladas.
-        #
-        # Si el servicio tiene ``consumir_codigo()`` (API planeada por
-        # 9-b), la usamos (algunas implementaciones separan preview de
-        # consumir). Si no, usamos ``generar_codigo()`` que consume
-        # atómicamente.
-        if self.codigo_generado == "LAB-????" or not self.codigo_generado:
-            # Placeholder → consumir uno real ahora.
-            consumir_fn = getattr(self.service, 'consumir_codigo', None)
-            if callable(consumir_fn):
-                self.codigo_generado = consumir_fn()
-            else:
-                self.codigo_generado = self.service.generar_codigo()
-
         datos_muestra = {
             'codigo': self.codigo_generado,
             'animal_id': animal_id,
@@ -544,12 +380,11 @@ class NuevaMuestraDialog(BaseDialog):
 
 
 class ResultadoMuestraDialog(BaseDialog):
-    service = LazyService(MuestraService)
-
     def __init__(self, parent=None, muestra_id=None, on_save=None):
         super().__init__(parent, "🧪 Ingresar Resultados de Laboratorio", 1000, 720)
         self.muestra_id = muestra_id
         self.on_save = on_save
+        self.service = MuestraService()
         self._build()
         self._cargar_datos()
 
@@ -673,22 +508,7 @@ class ResultadoMuestraDialog(BaseDialog):
                 font-weight: bold;
             }}
         """)
-        # Fase 5 (H-G7): antes se monkey-patcheaba ``keyPressEvent``
-        # directamente sobre la instancia:
-        #     self.tabla_resultados.keyPressEvent = self._pegar_magico_en_tabla
-        # Eso rompía encapsulación (sobrescribía un método de instancia
-        # sin subclass) y era frágil: cualquier código externo que
-        # guardara referencia a ``tabla_resultados.keyPressEvent`` perdía
-        # la sobreescritura, y PySide6 puede no respetar la asignación
-        # directa de métodos Python sobre objetos C++.
-        #
-        # Ahora se usa un ``QObject`` event filter instalado vía
-        # ``installEventFilter``, que es el mecanismo oficial de Qt para
-        # interceptar eventos sin subclassing. El filter sólo intercepta
-        # ``Ctrl+V``; todo lo demás pasa al handler original.
-        self._pegado_magico_filter = _PegadoMagicoFilter(
-            self.tabla_resultados, self._pegar_magico_en_tabla)
-        self.tabla_resultados.installEventFilter(self._pegado_magico_filter)
+        self.tabla_resultados.keyPressEvent = self._pegar_magico_en_tabla
         right_layout.addWidget(self.tabla_resultados, 1)
 
         # ✅ CAMPO DE OBSERVACIONES
@@ -800,48 +620,41 @@ class ResultadoMuestraDialog(BaseDialog):
     # ══════════════════════════════════════════════════════════════
 
     def _pegar_magico_en_tabla(self, event):
-        """Pega filas parseadas desde el portapapeles a la tabla de resultados.
-
-        Fase 5 (H-G7): antes este método se asignaba directamente como
-        ``self.tabla_resultados.keyPressEvent`` (monkey-patch sobre la
-        instancia), por lo que tenía que manejar también el caso "no es
-        Ctrl+V" llamando a ``QTableWidget.keyPressEvent(self.tabla_resultados,
-        event)``. Ahora el método solo se invoca cuando el event filter
-        ``_PegadoMagicoFilter`` ya confirmó que es Ctrl+V; el resto de
-        las teclas pasa directo al widget original.
-        """
-        clipboard = QApplication.clipboard().text()
-        if not clipboard:
-            return False
-        import re
-        patron_numero = re.compile(r'(\d+[.,]?\d*)')
-        lineas = clipboard.strip().split('\n')
-        fila_inicial = self.tabla_resultados.rowCount()
-        nuevas_filas = 0
-        datos_temporales = []
-        for linea in lineas:
-            if not linea.strip():
-                continue
-            match = patron_numero.search(linea.strip())
-            if not match:
-                continue
-            pos = match.start()
-            nombre = linea[:pos].strip()
-            resto = linea[pos:].strip()
-            partes = resto.split(None, 2)
-            datos_temporales.append([nombre, partes[0].strip().replace(',', '.'), partes[1].strip(
-            ) if len(partes) > 1 else "", partes[2].strip() if len(partes) > 2 else ""])
-            nuevas_filas += 1
-        if nuevas_filas == 0:
-            return False
-        self.tabla_resultados.setRowCount(fila_inicial + nuevas_filas)
-        for i, datos in enumerate(datos_temporales):
-            fila = fila_inicial + i
-            for col, texto in enumerate(datos):
-                self.tabla_resultados.setItem(
-                    fila, col, QTableWidgetItem(texto))
-        event.accept()
-        return True
+        if event.key() == Qt.Key_V and (
+                event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            clipboard = QApplication.clipboard().text()
+            if not clipboard:
+                return
+            import re
+            patron_numero = re.compile(r'(\d+[.,]?\d*)')
+            lineas = clipboard.strip().split('\n')
+            fila_inicial = self.tabla_resultados.rowCount()
+            nuevas_filas = 0
+            datos_temporales = []
+            for linea in lineas:
+                if not linea.strip():
+                    continue
+                match = patron_numero.search(linea.strip())
+                if not match:
+                    continue
+                pos = match.start()
+                nombre = linea[:pos].strip()
+                resto = linea[pos:].strip()
+                partes = resto.split(None, 2)
+                datos_temporales.append([nombre, partes[0].strip().replace(',', '.'), partes[1].strip(
+                ) if len(partes) > 1 else "", partes[2].strip() if len(partes) > 2 else ""])
+                nuevas_filas += 1
+            if nuevas_filas == 0:
+                return
+            self.tabla_resultados.setRowCount(fila_inicial + nuevas_filas)
+            for i, datos in enumerate(datos_temporales):
+                fila = fila_inicial + i
+                for col, texto in enumerate(datos):
+                    self.tabla_resultados.setItem(
+                        fila, col, QTableWidgetItem(texto))
+            event.accept()
+        else:
+            QTableWidget.keyPressEvent(self.tabla_resultados, event)
 
     # ══════════════════════════════════════════════════════════════
     # INTELIGENCIA: COLOREAR Y ANALIZAR RANGOS
@@ -964,14 +777,7 @@ class ResultadoMuestraDialog(BaseDialog):
 
         estado = self.estado.currentText()
         resultado_final = self._extraer_json_desde_tabla()
-        # Fase 4 (C1): antes se referenciaba `self.ref_text.toPlainText()`
-        # pero ese widget NUNCA se crea en el diálogo, así que el botón
-        # "💾 Guardar Resultados" siempre levantaba AttributeError y los
-        # resultados no se persistían. Las referencias por ítem ya viajan
-        # dentro del JSON de `resultado_final` (columna "Referencia" de
-        # `tabla_resultados`); el campo global `valor_referencia` de la
-        # muestra queda como None cuando no hay texto global adicional.
-        valor_ref = None
+        valor_ref = self.ref_text.toPlainText().strip() or None
 
         self.service.actualizar_estado(
             self.muestra_id, estado, resultado_final, valor_ref)
@@ -1014,33 +820,16 @@ class ResultadoMuestraDialog(BaseDialog):
         with open(filepath, "wb") as f:
             f.write(pdf_bytes)
 
-        # Fase 4 (C4): reemplazo de `os.startfile(filepath)` que solo
-        # existe en Windows y rompía "🖨️ Guardar e Imprimir PDF" en
-        # macOS/Linux. El helper usa `open` / `xdg-open` según el SO.
-        from gui_pyside.utils.platform_utils import open_file_externally
-        open_file_externally(filepath)
+        os.startfile(filepath)
 
 
 class DetalleMuestraDialog(BaseDialog):
-    service = LazyService(MuestraService)
-
     def __init__(self, parent=None, muestra_id=None):
         super().__init__(parent, "📄 Reporte de Muestra", 1000, 600)
         self.muestra_id = muestra_id
-        # Fase 6 (G-M8): overlay de carga para el botón "Imprimir
-        # Resultados Pro" (spawn de ``PDFProWorker``). Lazy-init: se
-        # crea solo si el usuario dispara la impresión. ``parent=self``
-        # para que el overlay se redimensione con el diálogo y se
-        # destruya automáticamente al cerrarlo.
-        self._loading_overlay = None
+        self.service = MuestraService()
         self._build()
         self._cargar_datos()
-
-    def _ensure_loading_overlay(self):
-        """Crea el ``LoadingOverlay`` perezosamente."""
-        if self._loading_overlay is None:
-            self._loading_overlay = LoadingOverlay(self, "Generando PDF...")
-        return self._loading_overlay
 
     def _build(self):
         main_layout = QHBoxLayout()
@@ -1249,49 +1038,39 @@ class DetalleMuestraDialog(BaseDialog):
         self.btn_imprimir.setText("Generando Reporte Pro... ⏳")
         self.btn_imprimir.setEnabled(False)
 
-        # Fase 6 (G-M8): mostramos el overlay de carga ANTES de
-        # arrancar el worker. ``LoadingOverlay.start()`` no bloquea —
-        # es solo un widget semitransparente sobre el diálogo. El
-        # worker corre en otro thread, así que la UI sigue responsiva
-        # (el overlay gira) mientras el PDF se genera.
-        self._ensure_loading_overlay().start("Generando PDF...")
+        from services.report_laboratorio import ReporteLaboratorioService
 
         muestra = self.service.obtener_muestra(self.muestra_id)
         entidad = getattr(muestra, 'empresa', None) or 'Persona Natural'
         es_empresa = entidad.strip().upper() != "PERSONA NATURAL"
         datos_empresa = {"nombre": entidad} if es_empresa else None
 
-        # Fase 5 (H-G8): ``PDFProWorker`` ahora es clase de módulo (no
-        # anidada en este método). Conectamos ``finished`` a
-        # ``deleteLater()`` para que Qt limpie el QThread al terminar,
-        # evitando la fuga de threads que ocurría antes (cada click
-        # acumulaba un QThread zombie).
-        # Si ya había un worker corriendo (doble-click rápido), lo
-        # cancelamos y dejamos que Qt lo limpie.
-        if getattr(self, 'worker', None) is not None and \
-                self.worker.isRunning():
-            try:
-                self.worker.quit()
-                self.worker.wait(2000)  # 2s de gracia
-            except Exception:
-                pass
-        self.worker = PDFProWorker(
-            self.muestra_id, es_empresa, datos_empresa, parent=self)
+        class PDFProWorker(QThread):
+            terminado = Signal(bytes)
+            error = Signal(str)
+
+            def __init__(self, muestra_id, es_empresa, datos_empresa):
+                super().__init__()
+                self.muestra_id = muestra_id
+                self.es_empresa = es_empresa
+                self.datos_empresa = datos_empresa
+
+            def run(self):
+                try:
+                    svc = ReporteLaboratorioService()
+                    pdf_bytes = svc.generar_pdf(
+                        self.muestra_id,
+                        es_empresa=self.es_empresa,
+                        datos_empresa=self.datos_empresa
+                    )
+                    self.terminado.emit(pdf_bytes)
+                except Exception as e:
+                    self.error.emit(str(e))
+
+        self.worker = PDFProWorker(self.muestra_id, es_empresa, datos_empresa)
         self.worker.terminado.connect(self._pdf_exito)
         self.worker.error.connect(self._pdf_error)
-        # Limpieza automática al terminar (éxito o error).
-        self.worker.finished.connect(self.worker.deleteLater)
-        # Fase 6 (G-M8): ocultar overlay cuando el worker termine
-        # (éxito o error). ``finished`` se emite DESPUÉS de
-        # ``terminado``/``error``, así que las callbacks ya
-        # actualizaron la UI — el overlay ya no es necesario.
-        self.worker.finished.connect(self._hide_loading_overlay)
         self.worker.start()
-
-    def _hide_loading_overlay(self):
-        """Oculta el overlay de carga si está visible."""
-        if self._loading_overlay is not None:
-            self._loading_overlay.stop()
 
     def _pdf_exito(self, pdf_bytes):
         dir_path = "data/pdfs"
@@ -1301,22 +1080,13 @@ class DetalleMuestraDialog(BaseDialog):
         filepath = os.path.join(dir_path, filename)
         with open(filepath, "wb") as f:
             f.write(pdf_bytes)
-        # Fase 4 (C4): helper multiplataforma en lugar de `os.startfile`
-        # (que solo existe en Windows y rompía el botón
-        # "🖨️ Imprimir Resultados Pro" en macOS/Linux).
-        from gui_pyside.utils.platform_utils import open_file_externally
-        open_file_externally(filepath)
+        os.startfile(filepath)
         self.btn_imprimir.setText("🖨️ Imprimir Resultados Pro")
         self.btn_imprimir.setEnabled(True)
 
     def _pdf_error(self, error_msg):
         self.btn_imprimir.setText("🖨️ Imprimir Resultados Pro")
         self.btn_imprimir.setEnabled(True)
-        # Fase 6 (G-M8): en error, ocultamos el overlay acá también
-        # (aunque ``finished`` ya lo hará, lo hacemos acá para que el
-        # overlay desaparezca antes de que aparezca el QMessageBox de
-        # error — sinó el overlay tapa el dialog).
-        self._hide_loading_overlay()
         show_error(
             self,
             "Fallo en el motor de impresión.",
