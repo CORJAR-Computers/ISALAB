@@ -5,7 +5,9 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QPushButton, QLabel,
                                QFrame, QStackedWidget, QMessageBox,
                                QScrollArea)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QShortcut, QKeySequence
+from gui_pyside.utils.settings import AppSettings
 
 from config import QT_STYLES, GLOBAL_STYLESHEET
 from gui_pyside.views.dashboard import DashboardView
@@ -73,6 +75,8 @@ class LabVetApp(QMainWindow):
     def __init__(self, usuario: dict = None):
         super().__init__()
         self.usuario = usuario or {}
+        self.settings = AppSettings()
+        self._current_theme = self.settings.get_theme()
         # Fase 5 (H-G5): logger ahora es module-level (no hace falta
         # re-obtenerlo en cada __init__).
         logger.info(f"LabVetApp inicializado con usuario: {self.usuario}")
@@ -93,6 +97,7 @@ class LabVetApp(QMainWindow):
         # era la única llamada y el singleton nunca se consultaba.
 
         self._build_layout()
+        self._setup_keyboard_shortcuts()
         self._show_dashboard()
 
     def _center_window(self):
@@ -293,6 +298,88 @@ class LabVetApp(QMainWindow):
         main_layout.addWidget(self.sidebar)
         main_layout.addWidget(self.content_area, 1)
 
+    def _setup_keyboard_shortcuts(self):
+        """Configure global keyboard shortcuts for the application.
+
+        Shortcuts:
+            Ctrl+S: Save current form (delegates to active view)
+            Ctrl+F: Focus search bar in active view
+            Ctrl+N: Open new record dialog (context-dependent)
+            Escape: Close active dialog or return to dashboard
+        """
+        # Ctrl+S — Save
+        save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        save_shortcut.activated.connect(self._on_save_shortcut)
+
+        # Ctrl+F — Search/Focus
+        search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        search_shortcut.activated.connect(self._on_search_shortcut)
+
+        # Ctrl+N — New record
+        new_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
+        new_shortcut.activated.connect(self._on_new_shortcut)
+
+        # Escape — Close/Back
+        esc_shortcut = QShortcut(QKeySequence("Escape"), self)
+        esc_shortcut.activated.connect(self._on_escape_shortcut)
+
+        logger.info("Keyboard shortcuts configured: Ctrl+S, Ctrl+F, Ctrl+N, Escape")
+
+    def _on_save_shortcut(self):
+        """Delegate save to the currently active view."""
+        current = self.content_area.currentWidget()
+        if current and hasattr(current, 'save'):
+            try:
+                current.save()
+            except Exception as e:
+                logger.warning(f"Save shortcut failed: {e}")
+        else:
+            logger.debug("No save handler in current view")
+
+    def _on_search_shortcut(self):
+        """Focus the search bar in the currently active view."""
+        current = self.content_area.currentWidget()
+        if current:
+            # Try common search widget names
+            for attr_name in ('search_bar', 'search_input', 'txt_buscar'):
+                widget = getattr(current, attr_name, None)
+                if widget and hasattr(widget, 'setFocus'):
+                    widget.setFocus()
+                    return
+            # Try to find QLineEdit descendants
+            from PySide6.QtWidgets import QLineEdit
+            for child in current.findChildren(QLineEdit):
+                if hasattr(child, 'placeholderText') and 'buscar' in (child.placeholderText() or '').lower():
+                    child.setFocus()
+                    return
+
+    def _on_new_shortcut(self):
+        """Open new record dialog based on current view context."""
+        current = self.content_area.currentWidget()
+        view_name = None
+        for name, view in self.views.items():
+            if view is current:
+                view_name = name
+                break
+
+        actions = {
+            'animales': self._nuevo_animal,
+            'recepcion': self._nueva_recepcion,
+            'historia': self._nueva_historia,
+            'muestras': self._nueva_muestra,
+        }
+        if view_name and view_name in actions:
+            actions[view_name]()
+
+    def _on_escape_shortcut(self):
+        """Close active dialog or navigate to dashboard."""
+        from PySide6.QtWidgets import QApplication, QLineEdit
+        focused = QApplication.focusWidget()
+        if isinstance(focused, QLineEdit) and focused.text():
+            focused.clear()
+            return
+        self._show_dashboard()
+
     def _navigate(self, callback, button_text):
         if self.active_button:
             self.active_button.setChecked(False)
@@ -376,7 +463,17 @@ class LabVetApp(QMainWindow):
         self.content_area.setCurrentWidget(self.views['dashboard'])
 
     def _on_theme_changed(self):
-        """Re-aplica el tema a todas las vistas activas.
+        """Persiste el tema y re-aplica a todas las vistas activas.
+
+        Guarda la preferencia del tema en QSettings para que se
+        restaure en la próxima ejecución.
+        """
+        # Toggle and persist theme
+        self._current_theme = 'light' if self._current_theme == 'dark' else 'dark'
+        self.settings.set_theme(self._current_theme)
+        logger.info(f"Theme persisted: {self._current_theme}")
+
+        # Re-aplica el tema a todas las vistas activas.
 
         Fase 5 (H-G5): handler conectado a ``DashboardView.theme_changed``.
         Antes, el toggle de tema solo refrescaba el dashboard y el

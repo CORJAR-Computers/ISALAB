@@ -806,3 +806,212 @@ def test_smoke_import_historia_service_helpers():
     from services.historia_service import (
         _float, _int, _coerce_or_keep, _MISSING
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# H-D7 — LazyService descriptor
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_h_d7_lazy_service_descriptor_file_exists():
+    """``gui_pyside/utils/services.py`` exists with the LazyService class."""
+    assert (ROOT / 'gui_pyside/utils/services.py').exists(), (
+        "gui_pyside/utils/services.py no encontrado"
+    )
+    src = read_source('gui_pyside/utils/services.py')
+    assert 'class LazyService:' in src, (
+        "Falta la clase LazyService en gui_pyside/utils/services.py"
+    )
+
+
+def test_h_d7_descriptor_implements_set_name():
+    """LazyService implementa ``__set_name__``."""
+    src = read_source('gui_pyside/utils/services.py')
+    assert 'def __set_name__(self, owner, name)' in src, (
+        "LazyService debería implementar __set_name__"
+    )
+    assert 'self.attr_name' in src, (
+        "__set_name__ debería setear self.attr_name"
+    )
+    assert 'self.private_name' in src, (
+        "__set_name__ debería setear self.private_name"
+    )
+
+
+def test_h_d7_descriptor_implements_get():
+    """LazyService implementa ``__get__``."""
+    src = read_source('gui_pyside/utils/services.py')
+    assert 'def __get__(self, obj, objtype=None)' in src, (
+        "LazyService debería implementar __get__"
+    )
+
+
+def test_h_d7_descriptor_implements_set():
+    """LazyService implementa ``__set__``."""
+    src = read_source('gui_pyside/utils/services.py')
+    assert 'def __set__(self, obj, value)' in src, (
+        "LazyService debería implementar __set__"
+    )
+
+
+def test_h_d7_descriptor_lazy_initialization():
+    """LazyService creates the service on first access, not at class definition time."""
+    from gui_pyside.utils.services import LazyService
+
+    call_log = []
+
+    class FakeService:
+        def __init__(self):
+            call_log.append('instantiated')
+
+    class FakeDialog:
+        service = LazyService(FakeService)
+
+    # Service should NOT be instantiated yet
+    assert len(call_log) == 0, "Service should not be instantiated at class definition time"
+
+    # First access should instantiate
+    dialog = FakeDialog()
+    instance = dialog.service
+    assert len(call_log) == 1, "Service should be instantiated on first access"
+    assert isinstance(instance, FakeService), "Should return an instance of FakeService"
+
+    # Second access should return the same instance (not re-instantiate)
+    instance2 = dialog.service
+    assert len(call_log) == 1, "Service should NOT be re-instantiated on second access"
+    assert instance is instance2, "Should return the same instance"
+
+
+def test_h_d7_descriptor_class_level_access():
+    """Accessing LazyService on the class returns the descriptor itself."""
+    from gui_pyside.utils.services import LazyService
+
+    class FakeService:
+        pass
+
+    class FakeDialog:
+        service = LazyService(FakeService)
+
+    # Class-level access returns the descriptor
+    descriptor = FakeDialog.service
+    assert isinstance(descriptor, LazyService), (
+        "Class-level access should return the descriptor"
+    )
+
+
+def test_h_d7_descriptor_di_friendly():
+    """LazyService supports dependency injection via normal assignment."""
+    from gui_pyside.utils.services import LazyService
+
+    class FakeService:
+        pass
+
+    class MockService:
+        is_mock = True
+
+    class FakeDialog:
+        service = LazyService(FakeService)
+
+    dialog = FakeDialog()
+
+    # Inject a mock
+    mock = MockService()
+    dialog.service = mock
+
+    # Should return the mock
+    assert dialog.service is mock, "Assignment should override the lazy service"
+    assert dialog.service.is_mock is True, "Should return the injected mock"
+
+
+def test_h_d7_descriptor_independent_instances():
+    """Each instance gets its own independent service instance."""
+    from gui_pyside.utils.services import LazyService
+
+    class FakeService:
+        pass
+
+    class FakeDialog:
+        service = LazyService(FakeService)
+
+    dialog1 = FakeDialog()
+    dialog2 = FakeDialog()
+
+    svc1 = dialog1.service
+    svc2 = dialog2.service
+
+    assert svc1 is not svc2, (
+        "Each dialog instance should have its own service instance"
+    )
+
+
+def test_h_d7_descriptor_private_name_derived():
+    """The private backing attribute is derived from the public name."""
+    from gui_pyside.utils.services import LazyService
+
+    class FakeService:
+        pass
+
+    class FakeDialog:
+        my_service = LazyService(FakeService)
+
+    dialog = FakeDialog()
+    dialog.service  # trigger __set_name__
+
+    # Check that the descriptor has the correct private_name
+    desc = FakeDialog.my_service
+    assert desc.private_name == '_my_service', (
+        f"private_name should be '_my_service', got '{desc.private_name}'"
+    )
+    assert desc.attr_name == 'my_service', (
+        f"attr_name should be 'my_service', got '{desc.attr_name}'"
+    )
+
+
+def test_h_d7_dialogs_use_lazy_service_descriptor():
+    """All refactored dialog files import and use LazyService."""
+    dialog_files = [
+        'gui_pyside/dialogs/vacuna_dialog.py',
+        'gui_pyside/dialogs/recibo_dialog.py',
+        'gui_pyside/dialogs/cirugia_dialog.py',
+        'gui_pyside/dialogs/recepcion_dialog.py',
+        'gui_pyside/dialogs/muestra_dialog.py',
+        'gui_pyside/dialogs/instalador_dialog.py',
+        'gui_pyside/dialogs/historia_dialog.py',
+        'gui_pyside/dialogs/consulta_dialog.py',
+    ]
+    for rel_path in dialog_files:
+        src = read_source(rel_path)
+        assert 'from gui_pyside.utils.services import LazyService' in src, (
+            f"{rel_path} no importa LazyService"
+        )
+
+
+def test_h_d7_no_remaining_property_boilerplate():
+    """No dialog file still has @property/@setter for service attributes."""
+    dialog_files = [
+        'gui_pyside/dialogs/vacuna_dialog.py',
+        'gui_pyside/dialogs/recibo_dialog.py',
+        'gui_pyside/dialogs/cirugia_dialog.py',
+        'gui_pyside/dialogs/recepcion_dialog.py',
+        'gui_pyside/dialogs/muestra_dialog.py',
+        'gui_pyside/dialogs/instalador_dialog.py',
+        'gui_pyside/dialogs/historia_dialog.py',
+        'gui_pyside/dialogs/consulta_dialog.py',
+    ]
+    for rel_path in dialog_files:
+        code = read_code(rel_path)
+        # No remaining @property/@setter for any service attribute.
+        # Check all known service attribute names used with LazyService:
+        #   service, animal_service, pdf_service, config_service,
+        #   rec_svc, recepcion_service
+        service_attrs = [
+            'service',
+            'animal_service',
+            'pdf_service',
+            'config_service',
+            'rec_svc',
+            'recepcion_service',
+        ]
+        for attr in service_attrs:
+            assert not re.search(
+                r'@property\s*\n\s*def\s+' + attr + r'\(self\)', code
+            ), f"{rel_path} todavía tiene @property def {attr}(self)"
