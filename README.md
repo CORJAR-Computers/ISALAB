@@ -145,5 +145,5 @@ pytest
 
 ## 📄 Licencia
 
-Derechos Reservados © IsaLab - Centro Diagnóstico Veterinario.  
+Derechos Reservados © IsaLab - Centro Diagnóstico Veterinario - Diseñado por CORJAR Computers Solutions 2026. 
 Uso interno y autorizado.
