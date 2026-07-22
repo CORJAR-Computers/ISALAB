@@ -195,26 +195,11 @@ class HistoriaView(QWidget):
 
     @ErrorHandler.handle_exception
     def _cargar_datos(self):
-        """Carga los datos en la tabla"""
+        """Carga los datos en la tabla usando el repositorio (no SQL raw)."""
         try:
-            # Obtener datos del servicio
-            from database.repositories import HistoriaClinicaRepository
-            repo = HistoriaClinicaRepository()
-            rows = repo.db.fetch_all('''
-                SELECT h.*, a.nombre as animal_nombre, a.codigo as animal_codigo,
-                       a.especie, r.codigo as recepcion_codigo
-                FROM historias_clinicas h
-                LEFT JOIN animales a ON h.animal_id = a.id
-                LEFT JOIN recepciones r ON h.recepcion_id = r.id
-                ORDER BY h.fecha DESC
-            ''')
-
-            from database.models import HistoriaClinica
-            self._all_data = [HistoriaClinica.from_row(row) for row in rows]
-
+            self._all_data = self.service.repo.get_all()
             logger.debug(
                 f"HistoriaView: {len(self._all_data)} registros recibidos")
-
             self._render(self._all_data)
 
         except Exception as e:

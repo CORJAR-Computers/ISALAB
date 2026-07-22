@@ -236,7 +236,7 @@ BEFORE claiming any status:
 ## Project-Specific Notes
 
 - **Tech Stack:** PySide6, Python, SQLite
-- **Application:** Pizzas Pastra — Point of Sale system
+- **Application:** IsaLab — Centro Diagnostico Veterinario
 - **Design System:** Dark theme with warm accents
 - **Testing Framework:** (configure as needed — e.g., pytest)
 

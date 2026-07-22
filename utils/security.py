@@ -123,7 +123,7 @@ def validar_fortaleza_password(password: str) -> tuple[bool, str]:
     return True, ""
 
 
-class PermissionError(Exception):
+class AuthorizationError(Exception):
     """Excepción para errores de permisos."""
 
 
@@ -216,3 +216,7 @@ def decorador_requerir_rol(rol: str) -> Callable:
             return func(self, *args, **kwargs)
         return wrapper
     return decorador
+
+
+# Alias de compatibilidad
+PermissionError = AuthorizationError

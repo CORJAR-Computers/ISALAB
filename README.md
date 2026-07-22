@@ -44,7 +44,7 @@
 ## 🛠️ Tecnologías Utilizadas
 
 - **Lenguaje:** Python 3.10+
-- **Interfaz Gráfica (GUI):** PySide6 (Qt for Python), CustomTkinter
+- **Interfaz Gráfica (GUI):** PySide6 (Qt for Python)
 - **Base de Datos & ORM:** SQLite, SQLAlchemy, Alembic (migraciones)
 - **Generación de Reportes:** ReportLab (PDF)
 - **Visualización de Datos:** Matplotlib
@@ -145,5 +145,5 @@ pytest
 
 ## 📄 Licencia
 
-Derechos Reservados © IsaLab - Centro Diagnóstico Veterinario.  
+Derechos Reservados © IsaLab - Centro Diagnóstico Veterinario - Diseñado por CORJAR Computers Solutions 2026.
 Uso interno y autorizado.

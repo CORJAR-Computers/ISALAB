@@ -26,6 +26,7 @@ class CirugiaService:
 
     def programar_cirugia(self, data: Dict[str, Any]) -> Cirugia:
         try:
+            self._validar(data)
             # Generar código automáticamente si no se proporciona
             if not data.get('codigo'):
                 data['codigo'] = self.generar_codigo()
@@ -85,8 +86,10 @@ class CirugiaService:
         cg.anestesia = data.get('anestesia', cg.anestesia)
         cg.protocolo_anestesico = data.get(
             'protocolo_anestesico', cg.protocolo_anestesico)
-        cg.duracion_min = int(data['duracion_min']) if data.get(
-            'duracion_min') else cg.duracion_min
+        try:
+            cg.duracion_min = int(data['duracion_min'])
+        except (ValueError, TypeError):
+            cg.duracion_min = cg.duracion_min
         cg.cirujano = data.get('cirujano', cg.cirujano)
         cg.anestesiologo = data.get('anestesiologo', cg.anestesiologo)
         cg.asistente = data.get('asistente', cg.asistente)

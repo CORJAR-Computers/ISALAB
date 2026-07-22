@@ -256,8 +256,9 @@ class DetalleVacunacionDialog(BaseDialog):
         self.worker.start()
 
     def _pdf_exito(self, ruta_pdf):
-        import os
-        os.startfile(ruta_pdf)
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(ruta_pdf))
         # ⚠️ CAMBIO 3: Restaurar el texto correcto del botón
         self.btn_imprimir.setText("🖨️ Imprimir Certificado")
         self.btn_imprimir.setEnabled(True)

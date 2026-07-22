@@ -116,9 +116,18 @@ class AnimalRepository(BaseRepository):
             session.query(AnimalORM).filter(AnimalORM.id == animal.id).update({
                 "nombre": animal.nombre, "especie": animal.especie, "raza": animal.raza,
                 "sexo": animal.sexo, "color": animal.color, "tipo_pelo": animal.tipo_pelo,
-                "edad": animal.edad, "peso": animal.peso, "propietario": animal.propietario,
-                "telefono": animal.telefono, "email": animal.email, "estado": animal.estado,
-                "observaciones": animal.observaciones
+                "senas_particulares": animal.senas_particulares,
+                "microchip": animal.microchip,
+                "edad": animal.edad, "unidad_edad": animal.unidad_edad,
+                "fecha_nacimiento": animal.fecha_nacimiento,
+                "peso": animal.peso,
+                "propietario": animal.propietario,
+                "propietario_tipo_doc": animal.propietario_tipo_doc,
+                "propietario_documento": animal.propietario_documento,
+                "propietario_direccion": animal.propietario_direccion,
+                "propietario_oficio": animal.propietario_oficio,
+                "telefono": animal.telefono, "email": animal.email,
+                "estado": animal.estado, "observaciones": animal.observaciones
             })
 
     def update_estado(self, animal_id: int, estado: str) -> None:
@@ -166,6 +175,7 @@ class MuestraRepository(BaseRepository):
                 codigo=m.codigo, animal_id=m.animal_id, empresa=m.empresa,
                 tipo_muestra=m.tipo_muestra, tipo_analisis=m.tipo_analisis,
                 fecha_recoleccion=m.fecha_recoleccion, fecha_entrega=m.fecha_entrega,
+                resultado=m.resultado, valor_referencia=m.valor_referencia,
                 observaciones=m.observaciones, tecnico=m.tecnico,
                 veterinario_ref=m.veterinario_ref, urgente=m.urgente, estado=m.estado
             )
@@ -271,6 +281,9 @@ class RecepcionRepository(BaseRepository):
                 if filtros.get('busqueda'):
                     query += " AND (r.codigo LIKE :b OR a.nombre LIKE :b OR a.codigo LIKE :b)"
                     params['b'] = f"%{filtros['busqueda']}%"
+            if filtros.get('fecha_hoy'):
+                    query += " AND date(r.fecha_hora) = :hoy"
+                    params['hoy'] = filtros['fecha_hoy']
             query += " ORDER BY r.fecha_hora DESC"
             rows = session.execute(sa.text(query), params).mappings().all()
             return [Recepcion.from_row(dict(r)) for r in rows]

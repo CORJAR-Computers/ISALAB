@@ -71,14 +71,23 @@ class ConsultaService:
 
     def actualizar_consulta(self, cid: int, data: dict) -> None:
         c = self.repo.get_by_id(cid)
-        c.motivo = data.get('motivo', c.motivo)
-        c.evolucion = data.get('evolucion', c.evolucion)
-        c.examen_fisico = data.get('examen_fisico', c.examen_fisico)
-        c.tratamiento = data.get('tratamiento', c.tratamiento)
-        c.medicamentos = data.get('medicamentos', c.medicamentos)
-        c.proxima_consulta = data.get('proxima_consulta', c.proxima_consulta)
-        c.veterinario = data.get('veterinario', c.veterinario)
-        c.observaciones = data.get('observaciones', c.observaciones)
+        # Usamos 'in data' para distinguir "campo no enviado" de "campo vacío intencionalmente"
+        if 'motivo' in data:
+            c.motivo = data['motivo']
+        if 'evolucion' in data:
+            c.evolucion = data['evolucion'] or None
+        if 'examen_fisico' in data:
+            c.examen_fisico = data['examen_fisico'] or None
+        if 'tratamiento' in data:
+            c.tratamiento = data['tratamiento'] or None
+        if 'medicamentos' in data:
+            c.medicamentos = data['medicamentos'] or None
+        if 'proxima_consulta' in data:
+            c.proxima_consulta = data['proxima_consulta']
+        if 'veterinario' in data:
+            c.veterinario = data['veterinario'] or None
+        if 'observaciones' in data:
+            c.observaciones = data['observaciones'] or None
         self.repo.update(c)
         logger.info(f"Consulta {cid} actualizada")
 

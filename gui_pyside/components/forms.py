@@ -139,7 +139,8 @@ class FormField(QWidget):
         elif self.widget_type == 'textarea':
             self.input.setPlainText(str(value) if value else "")
         elif self.widget_type in ['spin', 'doublespin']:
-            self.input.setValue(value or 0)
+            if value is not None:
+                self.input.setValue(value)
 
     def validate(self):
         """Valida campo obligatorio"""

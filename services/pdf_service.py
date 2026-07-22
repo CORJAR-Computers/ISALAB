@@ -6,6 +6,7 @@ Fachada unificada para generación de PDFs — ISALAB.
 import os
 import json
 from typing import Optional, Dict, List, Any
+from config import PDF_DIR
 
 from utils.logger import setup_logger
 
@@ -194,7 +195,7 @@ class PDFService:
 
     @staticmethod
     def ruta_default(nombre_archivo: str) -> str:
-        carpeta = os.path.join(os.getcwd(), "data", "pdfs")
+        carpeta = str(PDF_DIR)
         os.makedirs(carpeta, exist_ok=True)
         return os.path.join(carpeta, nombre_archivo)
 

@@ -11,10 +11,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QThread, Signal
 
 # Importar los servicios de reportes
-from services.report_laboratorio import generar_reporte_laboratorio
-from services.report_vacunacion import generar_reporte_vacunacion
-from services.report_historia_clinica import generar_reporte_historia_clinica
-from services.report_cirugia import generar_reporte_cirugia
+from services.report_laboratorio import ReporteLaboratorioService
+from services.report_vacunacion import ReporteVacunacionService
+from services.report_historia_clinica import ReporteHistoriaClinicaService
+from services.report_cirugia import ReporteCirugiaService
 
 
 class WorkerGenerarPDF(QThread):
@@ -40,7 +40,8 @@ class WorkerGenerarPDF(QThread):
     def run(self):
         try:
             if self.tipo_reporte == "laboratorio":
-                resultado = generar_reporte_laboratorio(
+                svc = ReporteLaboratorioService()
+                resultado = svc.generar_y_guardar(
                     resultado_orm=self.datos_orm,
                     datos_manual=self.datos_manual,
                     cliente_data=self.cliente_data,

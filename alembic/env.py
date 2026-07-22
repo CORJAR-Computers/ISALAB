@@ -1,4 +1,4 @@
-from logging.config import fileConfig
+from logging.config import fileConfig as _fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -9,23 +9,20 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
+# ── Sobrescribir URL con la ruta real de config.py (C2 fix) ──
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import DB_PATH
+config.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-# Añade estas importaciones arriba para que Alembic conozca tu proyecto
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    _fileConfig(config.config_file_name)
 
 from database.connection import Base
-from orm_models.animal import Animal  # Importamos nuestro modelo
-from orm_models.clinica import * # Importamos los modelos clínicos
+from orm_models.animal import Animal
+from orm_models.clinica import *
 
 # Y cambia el target_metadata
 target_metadata = Base.metadata

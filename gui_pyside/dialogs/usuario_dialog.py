@@ -121,10 +121,10 @@ class UsuarioDialog(BaseDialog):
                                  f"{ICONS['warning']} Error",
                                  "El usuario es obligatorio")
                     return
-                if not pwd or len(pwd) < 6:
+                if not pwd or len(pwd) < 8:
                     show_warning(self,
                                  f"{ICONS['warning']} Error",
-                                 "La contraseña debe tener al menos 6 caracteres")
+                                 "La contraseña debe tener al menos 8 caracteres, incluir mayúscula, minúscula y un número")
                     return
                 if pwd != pwd2:
                     show_warning(self,

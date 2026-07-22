@@ -76,7 +76,7 @@ class VacunaService:
         errores = []
         if not data.get('animal_id'):
             errores.append("Debe seleccionar un paciente")
-        if not data.get('tipo') in ('Vacuna', 'Desparasitación'):
+        if data.get('tipo') not in ('Vacuna', 'Desparasitación'):
             errores.append("El tipo debe ser 'Vacuna' o 'Desparasitación'")
         if not data.get('producto', '').strip():
             errores.append("El nombre del producto es obligatorio")

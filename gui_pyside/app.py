@@ -55,7 +55,7 @@ class LabVetApp(QMainWindow):
         self.usuario = usuario or {}
         from utils.logger import setup_logger
         logger = setup_logger()
-        logger.info(f"LabVetApp inicializado con usuario: {self.usuario}")
+        logger.info(f"LabVetApp inicializado — usuario: {self.usuario.get('username', '?')}, rol: {self.usuario.get('rol', '?')}")
         self.setWindowTitle("IsaLab - Centro Diagnóstico Veterinario")
         self.setMinimumSize(1200, 700)
         self.setStyleSheet(GLOBAL_STYLESHEET)
@@ -100,7 +100,7 @@ class LabVetApp(QMainWindow):
             from PySide6.QtGui import QPixmap
             import os
             from config import BASE_DIR
-            logo_path = os.path.join(BASE_DIR, "assets", "logo_sidebar.png")
+            logo_path = os.path.join(BASE_DIR, "assets", "Logo_Sidebar.png")
             if os.path.exists(logo_path):
                 pixmap = QPixmap(logo_path)
                 scaled_pixmap = pixmap.scaledToWidth(

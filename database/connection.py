@@ -166,13 +166,11 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "UPDATE codigo_contadores SET ultimo = ultimo + 1 WHERE prefijo = ?",
+                    "UPDATE codigo_contadores SET ultimo = ultimo + 1 "
+                    "WHERE prefijo = ? RETURNING ultimo",
                     (prefijo,)
                 )
-                row = cursor.execute(
-                    "SELECT ultimo FROM codigo_contadores WHERE prefijo = ?",
-                    (prefijo,)
-                ).fetchone()
+                row = cursor.fetchone()
                 conn.commit()
                 if not row:
                     raise DatabaseError(f"Prefijo desconocido: {prefijo}")

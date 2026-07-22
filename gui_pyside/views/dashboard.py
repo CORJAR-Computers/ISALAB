@@ -8,6 +8,9 @@ from PySide6.QtCore import Qt
 from config import get_theme_colors, CURRENT_THEME, toggle_theme, generate_qt_stylesheet
 from gui_pyside.components.components import ErrorHandler
 from PySide6.QtCore import Signal
+from utils.logger import setup_logger
+
+logger = setup_logger()
 
 
 class DashboardView(QWidget):
@@ -17,6 +20,7 @@ class DashboardView(QWidget):
         super().__init__(parent)
         self.theme_btn = None
         self.current_theme = None
+        self.stat_labels = {}
         self.setObjectName("dashboardView")
         self._build_layout()
 
@@ -115,19 +119,16 @@ class DashboardView(QWidget):
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
 
-        card1 = self._create_stat_card(
-            "Total Pacientes", "0", theme['primary'])
-        cards_layout.addWidget(card1)
-
-        card2 = self._create_stat_card(
-            "Muestras Pendientes", "0", theme['warning'])
-        cards_layout.addWidget(card2)
-
-        card3 = self._create_stat_card("Consultas Hoy", "0", theme['accent'])
-        cards_layout.addWidget(card3)
-
-        card4 = self._create_stat_card("Urgentes", "0", theme['danger'])
-        cards_layout.addWidget(card4)
+        self.stat_labels = {}
+        for key, title, color in [
+            ('pacientes', 'Total Pacientes', theme['primary']),
+            ('pendientes', 'Muestras Pendientes', theme['warning']),
+            ('consultas_hoy', 'Consultas Hoy', theme['accent']),
+            ('urgentes', 'Muestras Urgentes', theme['danger']),
+        ]:
+            card, value_label = self._create_stat_card(title, '...', color)
+            self.stat_labels[key] = value_label
+            cards_layout.addWidget(card)
 
         layout.addLayout(cards_layout)
 
@@ -150,7 +151,7 @@ class DashboardView(QWidget):
         layout.addStretch()
 
     def _create_stat_card(self, title, value, color):
-        """Crea una tarjeta de estadística"""
+        """Crea una tarjeta de estadística. Retorna (card, value_label)."""
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
@@ -183,9 +184,28 @@ class DashboardView(QWidget):
         """)
         layout.addWidget(title_label)
 
-        return card
+        return card, value_label
 
     @ErrorHandler.handle_exception
     def refresh(self):
-        """Refresca los datos del dashboard"""
-        # Aquí cargarías datos reales desde los servicios
+        """Refresca los datos del dashboard con conteos reales de la BD."""
+        try:
+            from database.connection import DatabaseManager
+            db = DatabaseManager()
+
+            total_pacientes = db.fetch_one(
+                "SELECT COUNT(*) as c FROM animales")['c']
+            muestras_pendientes = db.fetch_one(
+                "SELECT COUNT(*) as c FROM muestras WHERE estado = 'Pendiente'")['c']
+            consultas_hoy = db.fetch_one(
+                "SELECT COUNT(*) as c FROM consultas WHERE date(fecha) = date('now')")['c']
+            urgentes = db.fetch_one(
+                "SELECT COUNT(*) as c FROM muestras WHERE urgente = 1 AND estado != 'Completado' AND estado != 'Descartado'")['c']
+
+            self.stat_labels['pacientes'].setText(str(total_pacientes))
+            self.stat_labels['pendientes'].setText(str(muestras_pendientes))
+            self.stat_labels['consultas_hoy'].setText(str(consultas_hoy))
+            self.stat_labels['urgentes'].setText(str(urgentes))
+
+        except Exception as e:
+            logger.error(f"Error cargando estadísticas del dashboard: {e}")

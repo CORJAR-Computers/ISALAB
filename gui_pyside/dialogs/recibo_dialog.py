@@ -142,7 +142,10 @@ class GenerarReciboDialog(BaseDialog):
             'total': total
         }
 
-        filepath = self.pdf_service.generar_recibo(datos)
+        import os
+        from datetime import datetime
+        nombre_archivo = f"recibo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filepath = self.pdf_service.guardar_recibo(datos, nombre_archivo)
 
         reply = QMessageBox.question(
             self,

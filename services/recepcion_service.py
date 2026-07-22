@@ -39,6 +39,7 @@ class RecepcionService:
                 data['codigo'] = self.generar_codigo()
 
             # 1. El guardia de seguridad revisa los datos
+            self._validar(data)
             datos_validados = RecepcionSchema(**data)
 
             # 2. Si pasa, lo convertimos a nuestro modelo tradicional y
@@ -79,8 +80,7 @@ class RecepcionService:
 
     def recepciones_hoy(self) -> List[Recepcion]:
         hoy = datetime.now().strftime('%Y-%m-%d')
-        todas = self.repo.get_all()
-        return [r for r in todas if r.fecha_hora.startswith(hoy)]
+        return self.repo.get_all({'fecha_hoy': hoy})
 
     # ── Validación ────────────────────────────────────────────────────────
     def _validar(self, data: dict) -> None:

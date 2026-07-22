@@ -22,11 +22,7 @@ class AnimalService:
 
     def obtener_siguiente_codigo(self) -> str:
         """Usa el contador atómico de la BD para evitar colisiones si borran registros."""
-        try:
-            return self.db_manager.generar_codigo('PAC')
-        except Exception as e:
-            logger.error(f"Error generando código PAC: {e}")
-            return "PAC-001"
+        return self.db_manager.generar_codigo('PAC')
 
     def obtener_animal(self, animal_id: int) -> Animal:
         return self.animal_repo.get_by_id(animal_id)
@@ -59,18 +55,18 @@ class AnimalService:
                 estado=datos_validados.estado,
 
                 # --- CAMPOS NUEVOS QUE ANTES SE PERDÍAN ---
-                microchip=data.get('microchip'),
-                sexo=data.get('sexo'),
-                color=data.get('color'),
-                tipo_pelo=data.get('tipo_pelo'),
-                senas_particulares=data.get('senas_particulares'),
-                fecha_nacimiento=data.get('fecha_nacimiento'),
-                unidad_edad=data.get('unidad_edad'),
+                microchip=_vn(data.get('microchip')),
+                sexo=_vn(data.get('sexo')),
+                color=_vn(data.get('color')),
+                tipo_pelo=_vn(data.get('tipo_pelo')),
+                senas_particulares=_vn(data.get('senas_particulares')),
+                fecha_nacimiento=_vn(data.get('fecha_nacimiento')),
+                unidad_edad=_vn(data.get('unidad_edad')),
 
-                propietario_tipo_doc=data.get('propietario_tipo_doc'),
-                propietario_documento=data.get('propietario_documento'),
-                propietario_direccion=data.get('propietario_direccion'),
-                propietario_oficio=data.get('propietario_oficio'),
+                propietario_tipo_doc=_vn(data.get('propietario_tipo_doc')),
+                propietario_documento=_vn(data.get('propietario_documento')),
+                propietario_direccion=_vn(data.get('propietario_direccion')),
+                propietario_oficio=_vn(data.get('propietario_oficio')),
                 # -------------------------------------------
             )
 
@@ -143,17 +139,17 @@ class AnimalService:
             animal.observaciones = datos_validados.observaciones
 
             # --- NUEVOS CAMPOS ---
-            animal.microchip = data.get('microchip')
-            animal.sexo = data.get('sexo')
-            animal.color = data.get('color')
-            animal.tipo_pelo = data.get('tipo_pelo')
-            animal.senas_particulares = data.get('senas_particulares')
-            animal.fecha_nacimiento = data.get('fecha_nacimiento')
-            animal.unidad_edad = data.get('unidad_edad')
-            animal.propietario_tipo_doc = data.get('propietario_tipo_doc')
-            animal.propietario_documento = data.get('propietario_documento')
-            animal.propietario_direccion = data.get('propietario_direccion')
-            animal.propietario_oficio = data.get('propietario_oficio')
+            animal.microchip = _vn(data.get('microchip'))
+            animal.sexo = _vn(data.get('sexo'))
+            animal.color = _vn(data.get('color'))
+            animal.tipo_pelo = _vn(data.get('tipo_pelo'))
+            animal.senas_particulares = _vn(data.get('senas_particulares'))
+            animal.fecha_nacimiento = _vn(data.get('fecha_nacimiento'))
+            animal.unidad_edad = _vn(data.get('unidad_edad'))
+            animal.propietario_tipo_doc = _vn(data.get('propietario_tipo_doc'))
+            animal.propietario_documento = _vn(data.get('propietario_documento'))
+            animal.propietario_direccion = _vn(data.get('propietario_direccion'))
+            animal.propietario_oficio = _vn(data.get('propietario_oficio'))
             # ----------------------
 
             self.animal_repo.update(animal)
@@ -172,3 +168,10 @@ class AnimalService:
 
     def obtener_historial(self, animal_id: int) -> List[Movimiento]:
         return self.movimiento_repo.get_by_animal(animal_id)
+
+
+
+def _vn(val):
+    if isinstance(val, str) and val.strip() == '':
+        return None
+    return val

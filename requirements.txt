@@ -1,17 +1,30 @@
 # IsaLab — dependencias
 # Instalar con: pip install -r requirements.txt
 
-customtkinter>=5.2.0        # Framework principal de UI
-Pillow>=10.0.0              # Imágenes / logo
-matplotlib>=3.8.0           # Gráficos en dashboard y reportes
-tkcalendar>=1.6.1           # DateEntry en formularios
-reportlab>=4.0.0            # Generación de PDFs
-tksheet>=7.0.0              # Tablas nativas (reemplaza ttk.Treeview)
+# ── GUI ──────────────────────────────────────────────────────────────
+pyside6>=6.6.0
 
-pyside6
-sqlalchemy
+# ── Base de datos ────────────────────────────────────────────────────
+sqlalchemy>=2.0.0
+
+# ── Validación ───────────────────────────────────────────────────────
 pydantic>=2.5.0
 
-# Testing
+# ── Seguridad ────────────────────────────────────────────────────────
+bcrypt>=4.1.0
+
+# ── Imágenes / gráficos ─────────────────────────────────────────────
+Pillow>=10.0.0
+matplotlib>=3.8.0
+
+# ── Generación de PDFs ──────────────────────────────────────────────
+weasyprint>=61.0
+jinja2>=3.1.0
+reportlab>=4.0.0
+
+# ── Testing ─────────────────────────────────────────────────────────
 pytest>=8.0.0
 pytest-qt>=4.4.0
+python-barcode>=0.15.1
+qrcode[pil]>=7.4
+alembic>=1.13.0

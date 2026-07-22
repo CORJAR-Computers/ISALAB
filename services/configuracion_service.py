@@ -34,14 +34,28 @@ class ConfiguracionService:
             return {}
 
     def guardar_configuracion(self, config_data: dict) -> bool:
-        """Guarda la configuración en el archivo JSON."""
+        """Guarda la configuración en el archivo JSON de forma atómica."""
         try:
+            import tempfile
             # Mantener configuración existente y actualizar con la nueva
             current_config = self.cargar_configuracion()
             current_config.update(config_data)
-            
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(current_config, f, indent=4, ensure_ascii=False)
+
+            # Escribir a archivo temporal primero, luego renombrar (atómico)
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.data_dir), suffix='.tmp', prefix='lab_config_')
+            try:
+                with open(fd, 'w', encoding='utf-8') as f:
+                    json.dump(current_config, f, indent=4, ensure_ascii=False)
+                # Renombrar es atómico en POSIX y en NTFS con same-dir
+                Path(tmp_path).replace(self.config_path)
+            except Exception:
+                # Limpiar archivo temporal si algo falla
+                try:
+                    Path(tmp_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
             return True
         except Exception as e:
             logger.error(f"Error al guardar configuración: {e}")

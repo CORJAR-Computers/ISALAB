@@ -30,8 +30,6 @@ DB_PATH.parent.mkdir(exist_ok=True)
 LOG_PATH.parent.mkdir(exist_ok=True)
 ASSETS_DIR.mkdir(exist_ok=True)
 
-# Tipografía Healthcare - Figtree para mejor legibilidad clínica
-FIGTREE_URL = "https://fonts.google.com/share?selection.family=Figtree:wght@300;400;500;600;700"
 FONT_FAMILY = "'Segoe UI', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif"
 
 # Configuración de fuente para PySide6
@@ -45,7 +43,7 @@ FONT_CONFIG = {
         'mono': 11,
     },
     'weights': {
-        'light': 50,
+        'light': 25,
         'normal': 50,
         'bold': 75,
     }
@@ -144,11 +142,6 @@ BRAND_COLORS = {
     'info':     '#0E7490',
 }
 
-# CustomTkinter appearance
-CTK_CONFIG = {
-    'appearance_mode': 'light',   # 'light' | 'dark' | 'system'
-    'color_theme':     'blue',
-}
 
 # Database
 DB_CONFIG = {

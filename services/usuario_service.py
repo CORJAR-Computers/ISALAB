@@ -10,6 +10,7 @@ from utils.security import (
     verify_password,
     validar_fortaleza_password,
     Authorizer,
+    AuthorizationError,
     PermissionError,
     generar_password_temporal,
     necesita_migracion,
@@ -37,19 +38,24 @@ class UsuarioService:
         username_normalized = username.strip().lower()
         logger.info(f"Intentando autenticar usuario: {username_normalized}")
 
+        self._check_rate_limit(username_normalized)
+
         query = "SELECT id, username, nombre, rol, password_hash FROM usuarios WHERE username = ? AND activo = 1"
         row = self.db.fetch_one(query, (username_normalized,))
 
         if not row:
             logger.warning(
                 f"Login fallido: usuario no encontrado: {username_normalized}")
+            self._record_failed_login(username_normalized)
             raise AuthenticationError("Usuario o contraseña incorrectos")
 
         if not verify_password(password, row['password_hash']):
             logger.warning(
                 f"Login fallido: contraseña incorrecta para: {username_normalized}")
+            self._record_failed_login(username_normalized)
             raise AuthenticationError("Usuario o contraseña incorrectos")
 
+        self._login_attempts.pop(username_normalized, None)
         logger.info(
             f"Usuario autenticado exitosamente: {username_normalized}, rol: {
                 row['rol']}")
