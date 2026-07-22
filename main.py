@@ -64,9 +64,7 @@ class ExceptionHandler(QObject):
         logger.critical(f"Excepción no capturada: {error_msg}")
 
         if PRODUCTION_MODE:
-            logger.error(
-                f"Excepción en producción: {
-                    exc_type.__name__}: {exc_value}")
+            logger.error(f"Excepción en producción: {exc_type.__name__}: {exc_value}")
             QMessageBox.critical(
                 None,
                 "Error del Sistema",
@@ -89,9 +87,7 @@ class ExceptionHandler(QObject):
         logger.critical(f"Excepción en thread secundario: {error_msg}")
 
         if PRODUCTION_MODE:
-            logger.error(
-                f"Excepción en thread (producción): {
-                    exc_type.__name__}: {exc_value}")
+            logger.error(f"Excepción en thread (producción): {exc_type.__name__}: {exc_value}")
 
 
 # Instalar el manejador global de excepciones
@@ -151,10 +147,7 @@ def iniciar_sesion(splash, icono_app):
 
     try:
         # Debug: verificar icono antes de mostrar ventanas
-        logger.info(
-            f"Icono recibido en iniciar_sesion: isNull={
-                icono_app.isNull()}, sizes={
-                icono_app.availableSizes()}")
+        logger.info(f"Icono recibido en iniciar_sesion: isNull={icono_app.isNull()}, sizes={icono_app.availableSizes()}")
 
         if not verificar_usuarios_existentes():
             logger.info("Primera ejecución - Mostrando instalador")
@@ -165,7 +158,8 @@ def iniciar_sesion(splash, icono_app):
                 logger.info("Instalación cancelada por el usuario")
                 QMessageBox.information(
                     None, "Aviso", "La instalación fue cancelada. El sistema se cerrará.")
-                qt_app.quit()
+                if qt_app:
+                    qt_app.quit()
                 return
 
         logger.info("Iniciando aplicación...")
@@ -175,7 +169,8 @@ def iniciar_sesion(splash, icono_app):
 
         if login_dialog.exec() != QDialog.DialogCode.Accepted:
             logger.info("Login cancelado")
-            qt_app.quit()
+            if qt_app:
+                qt_app.quit()
             return
 
         usuario = getattr(login_dialog, 'usuario', {})
@@ -183,7 +178,8 @@ def iniciar_sesion(splash, icono_app):
 
         # Aplicar icono a ventana principal Y a la aplicación
         window.setWindowIcon(icono_app)
-        qt_app.setWindowIcon(icono_app)  # Icono en barra de tareas de Windows
+        if isinstance(qt_app, QApplication):
+            qt_app.setWindowIcon(icono_app)  # Icono en barra de tareas de Windows
         logger.info(f"Aplicando icono a ventana: isNull={icono_app.isNull()}")
 
         window.showMaximized()
@@ -192,7 +188,8 @@ def iniciar_sesion(splash, icono_app):
         msg = ocultar_info_sensible(sys.exc_info())
         logger.critical(f"Error fatal: {msg}")
         QMessageBox.critical(None, "Error", msg)
-        qt_app.quit()
+        if qt_app:
+            qt_app.quit()
 
 
 def main():
