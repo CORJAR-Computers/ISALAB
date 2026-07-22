@@ -416,6 +416,7 @@ class TestAnimalRepository:
         from database.repositories import AnimalRepository
 
         _create_test_animal("PAC-TEST-006", "Buddy Jr", "Canino")
+        _create_test_animal("PAC-TEST-006B", "Buddy Senior", "Canino")
 
         repo = AnimalRepository()
         resultados = repo.get_all(filtros={'busqueda': 'Buddy'})
@@ -910,7 +911,7 @@ class TestCirugiaRepository:
             repo.create(Cirugia(
                 codigo=f"CIRU-INT-{100+i}",
                 animal_id=test_animal_id,
-                fecha=f"2026-02-{01+i:02d}",
+                fecha=f"2026-02-{1+i:02d}",
                 tipo_cirugia=f"Cirugía {i+1}"
             ))
 
@@ -1191,7 +1192,7 @@ class TestConsultaRepository:
             repo.create(Consulta(
                 codigo=f"CONS-INT-{100+i}",
                 animal_id=test_animal_id,
-                fecha=f"2026-03-{01+i:02d}",
+                fecha=f"2026-03-{1+i:02d}",
                 motivo=f"Consulta {i+1}"
             ))
 
@@ -1350,7 +1351,7 @@ class TestVacunacionRepository:
                 animal_id=test_animal_id,
                 tipo="Vacuna",
                 producto=f"Vacuna {i+1}",
-                fecha_aplicacion=f"2026-03-{01+i:02d}"
+                fecha_aplicacion=f"2026-03-{1+i:02d}"
             ))
 
         vacunaciones = repo.get_all()

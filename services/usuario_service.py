@@ -22,9 +22,34 @@ CAMPOS_PERMITIDOS_ACTUALIZAR = {'nombre', 'rol'}
 
 
 class UsuarioService:
+    _login_attempts: dict = {}  # {username: [timestamp, ...]}
+    MAX_INTENTOS = 5
+    VENTANA_SEGUNDOS = 300  # 5 minutos
+
     def __init__(self, usuario_actual: Optional[dict] = None):
         self.db = DatabaseManager()
         self.authorizer = Authorizer(usuario_actual)
+
+    def _check_rate_limit(self, username: str) -> None:
+        """Verifica límite de intentos fallidos de login."""
+        import time
+        ahora = time.time()
+        intentos = [
+            t for t in self._login_attempts.get(username, [])
+            if ahora - t < self.VENTANA_SEGUNDOS
+        ]
+        if len(intentos) >= self.MAX_INTENTOS:
+            raise AuthenticationError(
+                f"Demasiados intentos fallidos. Intente en {self.VENTANA_SEGUNDOS // 60} minutos."
+            )
+        self._login_attempts[username] = intentos
+
+    def _record_failed_login(self, username: str) -> None:
+        """Registra un intento fallido de login."""
+        import time
+        intentos = self._login_attempts.get(username, [])
+        intentos.append(time.time())
+        self._login_attempts[username] = intentos
 
     def _verificar_admin(self) -> None:
         """Verifica que el usuario actual tenga permisos de admin."""

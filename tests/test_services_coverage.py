@@ -225,9 +225,16 @@ def _setup_test_db() -> None:
     db.execute("""
         CREATE TABLE IF NOT EXISTS codigo_contadores (
             prefijo TEXT PRIMARY KEY,
-            contador INTEGER DEFAULT 0
+            ultimo INTEGER DEFAULT 0
         )
     """)
+
+    # Inicializar contadores
+    for p in ('ISAL', 'CONS', 'CIRU', 'VAC', 'PAC', 'LAB'):
+        db.execute(
+            "INSERT OR IGNORE INTO codigo_contadores (prefijo, ultimo) VALUES (?, 0)",
+            (p,)
+        )
 
     # Reset singleton
     DatabaseManager._instance = None

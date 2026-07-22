@@ -73,6 +73,14 @@ class CirugiaService:
     def cirugias_por_paciente(self, animal_id: int) -> List[Cirugia]:
         return self.repo.get_by_animal(animal_id)
 
+    def obtener_historial_cirugias(self, animal_id: int) -> List[Cirugia]:
+        """Alias de cirugias_por_paciente para compatibilidad con tests."""
+        return self.cirugias_por_paciente(animal_id)
+
+    def obtener_cirugias_programadas(self) -> List[Cirugia]:
+        """Retorna cirugías con estado 'Programada'."""
+        return self.repo.get_all({'estado': 'Programada'})
+
     def actualizar_estado(self, cid: int, estado: str,
                           complicaciones: str = None) -> None:
         self.repo.get_by_id(cid)

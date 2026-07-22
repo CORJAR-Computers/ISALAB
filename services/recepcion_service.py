@@ -21,15 +21,10 @@ class RecepcionService:
 
     # ── Código ────────────────────────────────────────────────────────────
     def generar_codigo(self) -> str:
-        """Retorna el próximo código ISAL-XXXX sin consumirlo (vista previa)."""
-        # Consultamos el último sin incrementar para mostrar en el formulario;
-        # el incremento real ocurre en registrar_recepcion().
+        """Genera código correlativo de manera atómica."""
         from database.connection import DatabaseManager
         db = DatabaseManager()
-        row = db.fetch_one(
-            "SELECT ultimo FROM codigo_contadores WHERE prefijo = ?", ('ISAL',))
-        siguiente = (row['ultimo'] + 1) if row else 1
-        return f"ISAL-{siguiente:04d}"
+        return db.generar_codigo('ISAL')
 
     # ── CRUD ──────────────────────────────────────────────────────────────
     def registrar_recepcion(self, data: dict):
@@ -81,6 +76,14 @@ class RecepcionService:
     def recepciones_hoy(self) -> List[Recepcion]:
         hoy = datetime.now().strftime('%Y-%m-%d')
         return self.repo.get_all({'fecha_hoy': hoy})
+
+    def obtener_turnos_proximos(self) -> List[Recepcion]:
+        """Alias: recepciones activas del día (turnos pendientes/en curso)."""
+        return self.recepciones_hoy()
+
+    def obtener_pacientes_en_espera(self) -> List[Recepcion]:
+        """Retorna recepciones con estado 'En Espera' o 'Activa'."""
+        return self.repo.get_all({'estado': 'Activa'})
 
     # ── Validación ────────────────────────────────────────────────────────
     def _validar(self, data: dict) -> None:

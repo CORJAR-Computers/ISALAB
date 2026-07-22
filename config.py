@@ -21,12 +21,13 @@ else:
     APP_DIR = Path(__file__).resolve().parent
 
 BASE_DIR = APP_DIR
-DB_PATH = APP_DIR / "data" / "isalab.db"
+_db_path_override = os.getenv("ISALAB_DB_PATH")
+DB_PATH = Path(_db_path_override) if _db_path_override else APP_DIR / "data" / "isalab.db"
 LOG_PATH = APP_DIR / "logs" / "isalab.log"
 ASSETS_DIR = BUNDLE_DIR / "assets"
 
 # Crear directorios necesarios
-DB_PATH.parent.mkdir(exist_ok=True)
+DB_PATH.parent.mkdir(exist_ok=True, parents=True)
 LOG_PATH.parent.mkdir(exist_ok=True)
 ASSETS_DIR.mkdir(exist_ok=True)
 

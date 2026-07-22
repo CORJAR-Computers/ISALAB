@@ -279,9 +279,9 @@ class RecepcionRepository(BaseRepository):
                     query += " AND r.animal_id = :aid"
                     params['aid'] = filtros['animal_id']
                 if filtros.get('busqueda'):
-                    query += " AND (r.codigo LIKE :b OR a.nombre LIKE :b OR a.codigo LIKE :b)"
+                    query += " AND (r.codigo LIKE :b OR a.nombre LIKE :b OR a.codigo LIKE :b OR r.motivo LIKE :b)"
                     params['b'] = f"%{filtros['busqueda']}%"
-            if filtros.get('fecha_hoy'):
+                if filtros.get('fecha_hoy'):
                     query += " AND date(r.fecha_hora) = :hoy"
                     params['hoy'] = filtros['fecha_hoy']
             query += " ORDER BY r.fecha_hora DESC"

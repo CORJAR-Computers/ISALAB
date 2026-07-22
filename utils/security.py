@@ -220,3 +220,4 @@ def decorador_requerir_rol(rol: str) -> Callable:
 
 # Alias de compatibilidad
 PermissionError = AuthorizationError
+PermissionDeniedError = AuthorizationError  # alias para tests

@@ -114,10 +114,11 @@ class MuestraValidator(Validator):
         errores = []
 
         try:
-            cls.validate_required(data.get('codigo'), 'Código de Muestra')
-            cls.validate_length(data.get('codigo'), 'Código',
-                                VALIDACIONES['codigo_muestra']['min'],
-                                VALIDACIONES['codigo_muestra']['max'])
+            # codigo es opcional: se auto-genera si no se proporciona
+            if data.get('codigo'):
+                cls.validate_length(data.get('codigo'), 'Código',
+                                    VALIDACIONES['codigo_muestra']['min'],
+                                    VALIDACIONES['codigo_muestra']['max'])
         except ValidationError as e:
             errores.append(str(e))
 

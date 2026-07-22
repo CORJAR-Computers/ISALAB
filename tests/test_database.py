@@ -10,6 +10,7 @@ def test_database_singleton():
 
 def test_database_health():
     """Verifica el estado de salud de la base de datos"""
+    DatabaseManager._instance = None
     db = DatabaseManager()
     health = db.health_check()
     assert health['status'] == 'healthy'

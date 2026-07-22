@@ -72,6 +72,10 @@ class VacunaService:
         """Vacunas/desparasitaciones que vencen en los próximos `dias` días."""
         return self.repo.get_proximas(dias)
 
+    def obtener_vacunas_proximas_vencimiento(self, dias: int = 30) -> List[Vacunacion]:
+        """Alias de proximas_a_vencer para compatibilidad con tests."""
+        return self.proximas_a_vencer(dias)
+
     def _validar(self, data: dict) -> None:
         errores = []
         if not data.get('animal_id'):

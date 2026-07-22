@@ -17,7 +17,9 @@ from reports.helpers import (
     formatear_valor_numerico,
     clasificar_valor,
     imagen_a_base64,
-    calcular_edad, generar_codigo_verificacion,
+    calcular_edad,
+    calcular_edad_anios,
+    generar_codigo_verificacion,
 )
 from reports.barcode_utils import (
     generar_codigo_barras_base64,
@@ -42,6 +44,7 @@ __all__ = [
     "clasificar_valor",
     "imagen_a_base64",
     "calcular_edad",
+    "calcular_edad_anios",
     "generar_codigo_verificacion",
     "generar_codigo_barras_base64",
     "generar_qr_base64",
